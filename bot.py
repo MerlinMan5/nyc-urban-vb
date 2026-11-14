@@ -524,6 +524,26 @@ def dump_page(page: Page, label: str) -> None:
                 print("    " + it, flush=True)
 
 
+def log_popups(page: Page) -> None:
+    """Log the text of any visible modal/popup (e.g. the one with an 'Ok' button after Checkout)."""
+    texts = page.evaluate("""() => {
+      const vis = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+      const out = new Set();
+      document.querySelectorAll('input[type=button],button').forEach(b => {
+        const label = (b.value || b.innerText || '').trim();
+        if (!vis(b) || !/^(ok|close|continue|yes|no|cancel)$/i.test(label)) return;
+        let c = b.parentElement;
+        for (let i = 0; i < 6 && c && (c.innerText||'').trim().length < 15; i++) c = c.parentElement;
+        if (c) out.add(`[${label}] ` + c.innerText.trim().replace(/\\s+/g, ' ').slice(0, 400));
+      });
+      document.querySelectorAll('.modal,.popup,.dialog,[role=dialog],.ui-dialog,.swal2-popup,.alert').forEach(m => {
+        if (vis(m)) out.add('[modal] ' + m.innerText.trim().replace(/\\s+/g, ' ').slice(0, 400));
+      });
+      return [...out];
+    }""")
+    log(f"popups: {texts or 'none'}")
+
+
 def probe(page: Page) -> int:
     """Live dry run: pick a venue tab, take the first open session, fill the form with
     placeholder info, click Checkout, and dump the next page. Never clicks Pay."""
@@ -548,7 +568,9 @@ def probe(page: Page) -> int:
         return 0
     log(f"probing with {target['date']} C{target['court']} ({target['status']})")
     for k, v in (("NYU_FIRST", "Test"), ("NYU_LAST", "Probe"), ("NYU_EMAIL", "probe@example.com")):
-        os.environ.setdefault(k, v)
+        if not env(k):  # workflow passes missing secrets as ""
+            os.environ[k] = v
+    page.on("dialog", lambda d: (log(f"JS {d.type} dialog: {d.message[:200]!r}"), d.accept()))
     try:
         fill_booking_form(page, target["row"])
         log("booking form filled OK")
@@ -558,16 +580,22 @@ def probe(page: Page) -> int:
         log(f"FAILED before/at Checkout: {str(e).splitlines()[0][:150]}")
         dump_page(page, "page at failure")
         return 1
+    page.wait_for_timeout(2000)
+    log_popups(page)
     dump_page(page, "page after Checkout")
     for k, v in (("NYU_CARD_NUMBER", "4111111111111111"), ("NYU_CARD_EXP", "04/28"), ("NYU_CARD_CVV", "123")):
-        os.environ.setdefault(k, v)
+        if not env(k):
+            os.environ[k] = v
     try:
         fill_card(page)
         log("card fields found and filled (dummy card)")
     except Exception as e:
         log(f"card step: {str(e).splitlines()[0][:150]}")
     pay = find_pay_button(page)
-    log(f"pay button: {'FOUND (not clicked)' if pay else 'NOT FOUND'}")
+    label = (pay.get_attribute("value") or pay.inner_text() or "").strip() if pay else ""
+    if pay and re.search(r"checkout|login", label, re.I):
+        pay = None
+    log(f"pay button: {'FOUND ' + repr(label) + ' (not clicked)' if pay else 'NOT FOUND (still on signup page?)'}")
     return 0
 
 # ---------- main ----------
