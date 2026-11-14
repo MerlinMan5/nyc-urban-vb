@@ -2,25 +2,27 @@ name: watch
 
 on:
   schedule:
-    # Fridays 9am–5pm ET while EST is in effect (UTC-5).
-    # When daylight saving starts in March, change 14-21 to 13-20.
-    - cron: "*/5 14-21 * * 5"
+    # Every 5 min, every day, 9am–9pm ET while EST is in effect (UTC-5).
+    # Spots for future Fridays can open any day, not just session day.
+    # When daylight saving starts in March, change to "13-23,0" (same local hours).
+    - cron: "*/5 14-23,0-1 * * *"
   workflow_dispatch:
     inputs:
+      mode:
+        description: "alert (default) or buy (single ticket)"
+        type: choice
+        options: [alert, buy]
+        default: alert
       dry_run:
-        description: "Stop before clicking Pay"
+        description: "buy mode: stop before clicking Pay"
         type: boolean
         default: true
       targets:
-        description: "today | any | space-separated dates like 11/20 12/04 (blank = repo default)"
-        type: string
-        default: ""
-      url:
-        description: "Session page URL override (e.g. another venue with open spots, for testing)"
+        description: "any | today | space-separated dates like 11/20 12/04 (blank = repo default)"
         type: string
         default: ""
       screenshots:
-        description: "Upload screenshots (PUBLIC repo: they may show your name/email)"
+        description: "buy mode: upload screenshots (PUBLIC repo: they may show your name/email)"
         type: boolean
         default: false
 
@@ -57,10 +59,14 @@ jobs:
 
       - name: Run bot
         env:
+          NYU_MODE: ${{ inputs.mode || vars.NYU_MODE || 'alert' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
           SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.screenshots && '1' || '0' }}
-          NYU_TARGETS: ${{ inputs.targets || vars.NYU_TARGETS || 'today' }}
-          NYU_URL: ${{ inputs.url || vars.NYU_URL }}
+          NYU_TARGETS: ${{ inputs.targets || vars.NYU_TARGETS || 'any' }}
+          NYU_GROUP_SIZE: ${{ vars.NYU_GROUP_SIZE || '4' }}
+          NYU_LGA_URL: ${{ vars.NYU_LGA_URL }}
+          NYU_BEACON_URL: ${{ vars.NYU_BEACON_URL }}
+          NYU_NTFY_TOPIC: ${{ secrets.NYU_NTFY_TOPIC }}
           NYU_FIRST: ${{ secrets.NYU_FIRST }}
           NYU_LAST: ${{ secrets.NYU_LAST }}
           NYU_EMAIL: ${{ secrets.NYU_EMAIL }}
@@ -70,7 +76,6 @@ jobs:
           NYU_CARD_EXP: ${{ secrets.NYU_CARD_EXP }}
           NYU_CARD_CVV: ${{ secrets.NYU_CARD_CVV }}
           NYU_CARD_ZIP: ${{ secrets.NYU_CARD_ZIP }}
-          NYU_NTFY_TOPIC: ${{ secrets.NYU_NTFY_TOPIC }}
         run: python bot.py
 
       - name: Save state & sightings
