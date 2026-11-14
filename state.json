@@ -1,4 +1,13 @@
 {
-  "last_seen": {},
+  "last_seen": {
+    "LGA 11/20 C1": "sold_out",
+    "LGA 11/20 C2": "sold_out",
+    "LGA 12/04 C1": "sold_out",
+    "LGA 12/04 C2": "sold_out",
+    "LGA 12/11 C1": "sold_out",
+    "LGA 12/11 C2": "sold_out",
+    "LGA 12/18 C1": "sold_out",
+    "LGA 12/18 C2": "sold_out"
+  },
   "purchases": {}
 }
