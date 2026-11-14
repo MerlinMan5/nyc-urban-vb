@@ -6,6 +6,8 @@ on:
     # Spots for future Fridays can open any day, not just session day.
     # When daylight saving starts in March, change to "13-23,0" (same local hours).
     - cron: "*/5 14-23,0-1 * * *"
+  push:
+    branches: [probe]   # pushing to the "probe" branch runs a live probe (never pays)
   workflow_dispatch:
     inputs:
       mode:
@@ -63,10 +65,10 @@ jobs:
 
       - name: Run bot
         env:
-          NYU_MODE: ${{ inputs.mode || vars.NYU_MODE || 'alert' }}
-          NYU_PROBE_VENUE: ${{ inputs.probe_venue }}
+          NYU_MODE: ${{ github.ref_name == 'probe' && 'probe' || inputs.mode || vars.NYU_MODE || 'alert' }}
+          NYU_PROBE_VENUE: ${{ inputs.probe_venue || 'Brandeis' }}
           # probe runs write nothing back to the repo
-          NYU_DATA_DIR: ${{ inputs.mode == 'probe' && runner.temp || '' }}
+          NYU_DATA_DIR: ${{ (inputs.mode == 'probe' || github.ref_name == 'probe') && runner.temp || '' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
           SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.screenshots && '1' || '0' }}
           NYU_TARGETS: ${{ inputs.targets || vars.NYU_TARGETS || 'any' }}

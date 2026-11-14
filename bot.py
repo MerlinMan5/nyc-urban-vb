@@ -308,21 +308,56 @@ def login(page: Page) -> None:
     log("login submitted")
 
 
+def tick(page: Page, box) -> None:
+    """Check a checkbox the site has restyled (the real <input> sits under a styled label,
+    so a plain .check() times out waiting for it to be clickable)."""
+    if box.is_checked():
+        return
+    try:
+        box.check(timeout=3000)
+    except Exception:
+        pass
+    if not box.is_checked():
+        bid = box.get_attribute("id")
+        lbl = page.locator(f"label[for='{bid}']") if bid else None
+        if lbl is not None and lbl.count():
+            try:
+                lbl.first.click(timeout=3000)
+            except Exception:
+                pass
+    if not box.is_checked():
+        box.evaluate("e => e.click()")  # real click semantics: toggles + fires the site's handlers
+    if not box.is_checked():
+        raise RuntimeError(f"couldn't check box id={box.get_attribute('id')}")
+
+
+def fill_named(page: Page, name: str, value: str) -> bool:
+    el = page.locator(f"input[name='{name}']")
+    if el.count():
+        el.first.fill(value)
+        return True
+    return False
+
+
 def fill_booking_form(page: Page, row) -> None:
-    row.locator("input[type=checkbox], input[type=radio]").first.check()
+    tick(page, row.locator("input[type=checkbox], input[type=radio]").first)
     first, last, email = env("NYU_FIRST"), env("NYU_LAST"), env("NYU_EMAIL")
+    # real field names from the live site (probe 2026-11-14); label heuristics as fallback
     missing = [n for n, ok in (
-        ("first", fill_by_label(page, r"first\s*name", first, "input[name*='first' i]")),
-        ("last", fill_by_label(page, r"last\s*name", last, "input[name*='last' i]")),
-        ("email", fill_by_label(page, r"^\s*email", email, "input[type=email], input[name*='email' i]")),
-        ("confirm_email", fill_by_label(page, r"confirm\s*email", email, "input[name*='confirm' i]")),
+        ("first", fill_named(page, "f_first_name", first) or fill_by_label(page, r"first\s*name", first, "input[name*='first' i]")),
+        ("last", fill_named(page, "f_last_name", last) or fill_by_label(page, r"last\s*name", last, "input[name*='last' i]")),
+        ("email", fill_named(page, "f_email", email) or fill_by_label(page, r"^\s*email", email, "input[type=email], input[name*='email' i]")),
+        ("confirm_email", fill_named(page, "f_cemail", email) or fill_by_label(page, r"confirm\s*email", email, "input[name*='confirm' i]")),
     ) if not ok]
     if missing:
         raise RuntimeError(f"booking fields not found: {missing}")
-    waiver = innermost(page, re.compile(r"agree|waiver", re.I), "input[type=checkbox]", max_text=300)
+    waiver = page.locator("input[name='I_agree']")
+    waiver = waiver.first if waiver.count() else innermost(page, re.compile(r"agree|waiver", re.I), "input[type=checkbox]", max_text=300)
     if not waiver:
         raise RuntimeError("waiver checkbox not found")
-    waiver.check()
+    tick(page, waiver)
+    sel = page.locator("input[name='f_GameID']:checked").count()
+    log(f"form: {sel} session(s) selected, waiver checked")
 
 
 def click_checkout(page: Page) -> None:
