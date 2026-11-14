@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<!-- Mock of the NY Urban signup page layout (from a phone screenshot) for offline tests. -->
+<!-- Mock of the NY Urban open-play page for offline tests: venue tabs on one page,
+     Gym column per row, "Available" = number when <= 5 left, "Yes" when more. -->
 <html><body>
 <div id="login">
   <form action="index.html" method="get">
@@ -7,13 +8,15 @@
   </form>
 </div>
 <h2>OPEN PLAY SIGNUP</h2>
+<ul id="tabs">
+  <li><a href="#" onclick="show('lga');return false">Laguardia / Fri.</a></li>
+  <li><a href="#" onclick="show('w50');return false">W50th Street Campus / Fri.</a></li>
+  <li><a href="#" onclick="show('beacon');return false">Beacon / Fri.</a></li>
+  <li><a href="#" onclick="show('brandeis');return false">Brandeis / Fri.</a></li>
+</ul>
 <form action="pay.html" method="get">
-<table>
-  <tr><th>Select</th><th>Date</th><th>Level</th><th>Time</th><th>Fee ($)</th><th>Available</th></tr>
-  <tr><td><input type="checkbox" name="g[]" value="1" disabled></td><td>Fri 11/20</td><td>Intermediate - Court 1</td><td>7:00 pm - 10:30 pm</td><td>18.00</td><td>Sold Out</td></tr>
-  <tr><td><input type="checkbox" name="g[]" value="2"></td><td>Fri 11/20</td><td>Intermediate - Court 2</td><td>7:00 pm - 10:30 pm</td><td>18.00</td><td>1</td></tr>
-  <tr><td><input type="checkbox" name="g[]" value="3" disabled></td><td>Fri 12/04</td><td>Intermediate - Court 1</td><td>7:00 pm - 10:30 pm</td><td>18.00</td><td>Sold Out</td></tr>
-  <tr><td><input type="checkbox" name="g[]" value="4"></td><td>Fri 12/04</td><td>Intermediate - Court 2</td><td>7:00 pm - 10:30 pm</td><td>18.00</td><td>4</td></tr>
+<table id="sessions">
+  <tr><th>Select</th><th>Date</th><th>Gym</th><th>Level</th><th>Time</th><th>Fee ($)</th><th>Available</th></tr>
 </table>
 <p>You may select up to 4 dates.</p>
 <table>
@@ -26,4 +29,28 @@
 <div><a href="#">READ WAIVER</a> <input type="checkbox" name="waiver" required> I have read the waiver and release, and agree to it. (This must be checked to continue)</div>
 <input type="submit" value="Checkout">
 </form>
+<script>
+const DATA = {
+  lga: [["11/20","LaGuardia H.S.","Intermediate - Court 1","Sold Out"],
+        ["11/20","LaGuardia H.S.","Intermediate - Court 2","1"],
+        ["12/04","LaGuardia H.S.","Intermediate - Court 1","Sold Out"],
+        ["12/04","LaGuardia H.S.","Intermediate - Court 2","4"]],
+  w50: [],
+  beacon: [["11/20","Beacon H.S.","Advanced - Court 1","5"],
+           ["11/20","Beacon H.S.","Advanced Intermediate - Court 2","2"],
+           ["11/20","Beacon H.S.","Advanced Intermediate - Court 3","Sold Out"]],
+  brandeis: [["11/20","Brandeis H.S.","Intermediate - Court 1","Yes"]],
+};
+function show(v) {
+  const t = document.getElementById('sessions');
+  while (t.rows.length > 1) t.deleteRow(1);
+  DATA[v].forEach(([d,g,l,a], i) => {
+    const r = t.insertRow();
+    const sold = a === 'Sold Out';
+    r.innerHTML = `<td><input type="checkbox" name="g[]" value="${v}${i}" ${sold?'disabled':''}></td>
+      <td>Fri ${d}</td><td>${g}</td><td>${l}</td><td>7:00 pm - 10:30 pm</td><td>18.00</td><td>${a}</td>`;
+  });
+}
+show('lga');
+</script>
 </body></html>

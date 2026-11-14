@@ -9,10 +9,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "alert (default) or buy (single ticket)"
+        description: "alert = observe & notify | probe = live dry run of the checkout flow (never pays) | buy = single ticket"
         type: choice
-        options: [alert, buy]
+        options: [alert, probe, buy]
         default: alert
+      probe_venue:
+        description: "probe mode: venue tab to test with (needs an open session)"
+        type: string
+        default: "Brandeis"
       dry_run:
         description: "buy mode: stop before clicking Pay"
         type: boolean
@@ -60,6 +64,9 @@ jobs:
       - name: Run bot
         env:
           NYU_MODE: ${{ inputs.mode || vars.NYU_MODE || 'alert' }}
+          NYU_PROBE_VENUE: ${{ inputs.probe_venue }}
+          # probe runs write nothing back to the repo
+          NYU_DATA_DIR: ${{ inputs.mode == 'probe' && runner.temp || '' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
           SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.screenshots && '1' || '0' }}
           NYU_TARGETS: ${{ inputs.targets || vars.NYU_TARGETS || 'any' }}

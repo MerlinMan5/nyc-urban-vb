@@ -98,13 +98,60 @@ def shot(page: Page, name: str) -> None:
 # ---------- watches ----------
 
 def watches() -> list[dict]:
-    """Ordered by priority: LaGuardia first."""
-    w = [{"venue": "LGA", "url": env("NYU_LGA_URL") or env("NYU_URL") or DEFAULT_LGA_URL, "level_rx": None}]
-    if env("NYU_BEACON_URL"):
+    """Ordered by priority: LaGuardia first. Venues are tabs on the same page;
+    rows are also filtered by the gym name in each row so a missed tab click can't mislabel."""
+    base = env("NYU_LGA_URL") or env("NYU_URL") or DEFAULT_LGA_URL
+    return [
+        {"venue": "LGA", "url": base, "tab": "Laguardia", "gym_rx": re.compile(r"la\s*guardia", re.I),
+         "level_rx": None},
         # "Advanced Intermediate" only; plain "Advanced" rows don't match
-        w.append({"venue": "Beacon", "url": env("NYU_BEACON_URL"),
-                  "level_rx": re.compile(r"advanced\s*[-/]?\s*intermediate", re.I)})
-    return w
+        {"venue": "Beacon", "url": env("NYU_BEACON_URL") or base, "tab": "Beacon",
+         "gym_rx": re.compile(r"beacon", re.I),
+         "level_rx": re.compile(r"advanced\s*[-/]?\s*intermediate", re.I)},
+    ]
+
+
+def select_tab(page: Page, name: str) -> bool:
+    """Click the venue tab/link/option whose text starts with `name`. Returns True if something was clicked."""
+    rx = re.compile(rf"^\s*{re.escape(name)}", re.I)
+    for sel in page.locator("select").all():  # dropdown variant
+        try:
+            labels = [o.inner_text().strip() for o in sel.locator("option").all()]
+            hit = next((l for l in labels if rx.search(l)), None)
+            if hit and sel.is_visible():
+                sel.select_option(label=hit)
+                _settle(page)
+                return True
+        except Exception:
+            pass
+    best = None
+    # prefer real click targets; fall back to containers
+    for css in ("a, button, [onclick], input[type=button], input[type=submit]", "li, span, td, label, div"):
+        best_len = 10**9
+        cands = page.locator(css, has_text=rx) if "input" not in css else page.locator(css)
+        for i in range(min(cands.count(), 150)):
+            c = cands.nth(i)
+            try:
+                t = " ".join((c.inner_text() or c.get_attribute("value") or "").split())
+                if rx.search(t) and len(t) < 40 and c.is_visible() and len(t) < best_len:
+                    best, best_len = c, len(t)
+            except Exception:
+                pass
+        if best is not None:
+            break
+    if best is None:
+        return False
+    best.click()
+    _settle(page)
+    return True
+
+
+def _settle(page: Page) -> None:
+    try:
+        page.wait_for_load_state("networkidle", timeout=15000)
+    except PWTimeout:
+        pass
+    page.wait_for_timeout(1000)
 
 
 # ---------- state & sightings ----------
@@ -136,7 +183,7 @@ def set_purchase(state: dict, date_iso: str, status: str, **extra) -> None:
 
 # ---------- page parsing ----------
 
-def read_rows(page: Page, level_rx: re.Pattern | None = None) -> list[dict]:
+def read_rows(page: Page, level_rx: re.Pattern | None = None, gym_rx: re.Pattern | None = None) -> list[dict]:
     rows = []
     trs = page.locator("tr")
     for i in range(trs.count()):
@@ -147,6 +194,8 @@ def read_rows(page: Page, level_rx: re.Pattern | None = None) -> list[dict]:
             continue
         if level_rx and not level_rx.search(text):
             continue
+        if gym_rx and not gym_rx.search(text):
+            continue
         cm = re.search(r"Court\s*(\d+)", text, re.I)
         box = tr.locator("input[type=checkbox], input[type=radio]")
         tds = tr.locator("td")
@@ -155,16 +204,24 @@ def read_rows(page: Page, level_rx: re.Pattern | None = None) -> list[dict]:
         sold_out = "sold out" in text.lower()
         enabled = box.count() > 0 and box.first.is_enabled()
         is_open = (not sold_out) and enabled
-        count = int(nm.group(1)) if (is_open and nm) else None
+        # site shows the exact number when <= 5 spots are left, "Yes" when more than 5
+        if is_open and re.search(r"\byes\b", last_cell, re.I):
+            count = 6
+        else:
+            count = int(nm.group(1)) if (is_open and nm) else None
         rows.append({
             "date": dm.group(1),
             "court": cm.group(1) if cm else "?",
             "open": is_open,
             "count": count,  # None = site didn't show a number
-            "status": "sold_out" if sold_out else (f"open:{count if count is not None else '?'}" if enabled else "unavailable"),
+            "status": "sold_out" if sold_out else (f"open:{fmt_count(count)}" if enabled else "unavailable"),
             "row": tr,
         })
     return rows
+
+
+def fmt_count(c: int | None) -> str:
+    return "?" if c is None else ("6+" if c >= 6 else str(c))
 
 
 def wanted(mmdd: str, targets: str) -> bool:
@@ -182,8 +239,9 @@ def improved(old: str | None, new: str) -> bool:
         return False
     if not old or not old.startswith("open"):
         return True
-    o, n = old.split(":")[1], new.split(":")[1]
-    return o.isdigit() and n.isdigit() and int(n) > int(o)
+    num = lambda x: 6 if x == "6+" else (int(x) if x.isdigit() else None)
+    o, n = num(old.split(":")[1]), num(new.split(":")[1])
+    return o is not None and n is not None and n > o
 
 
 # ---------- form helpers (buy mode) ----------
@@ -290,14 +348,14 @@ def _fill_in_frames(page: Page, selector: str, value: str) -> bool:
         if not el:
             continue
         if el.evaluate("e => e.tagName").lower() == "select":
-            for opt in (value, value.lstrip("0"), f"20{value}" if len(value) == 2 else value):
-                for kw in ({"value": opt}, {"label": opt}):
-                    try:
-                        el.select_option(**kw)
-                        return True
-                    except Exception:
-                        pass
-            return False
+            # match existing options; select_option on a missing one would wait 30s
+            opts = el.evaluate("e => [...e.options].map(o => [o.value, o.text.trim()])")
+            wants = {value, value.lstrip("0"), f"20{value}" if len(value) == 2 else value}
+            hit = next((v for v, t in opts if v in wants or t in wants), None)
+            if hit is None:
+                return False
+            el.select_option(value=hit)
+            return True
         el.fill(value)
         return True
     return False
@@ -343,9 +401,10 @@ def find_pay_button(page: Page):
     return None
 
 
-def buy(page: Page, url: str, venue: str, target: dict, level_rx, state: dict) -> int:
+def buy(page: Page, w: dict, target: dict, state: dict) -> int:
     """Single-ticket purchase of `target`. Only used when NYU_MODE=buy."""
     dry = env("DRY_RUN") == "1"
+    venue = w["venue"]
     date_iso = iso_date(target["date"])
     if state["purchases"].get(date_iso, {}).get("status") in BLOCKING:
         log(f"buy: {date_iso} already {state['purchases'][date_iso]['status']}")
@@ -353,8 +412,9 @@ def buy(page: Page, url: str, venue: str, target: dict, level_rx, state: dict) -
     try:
         if env("NYU_USERNAME"):
             login(page)
-            page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            target = next(r for r in read_rows(page, level_rx)
+            page.goto(w["url"], wait_until="domcontentloaded", timeout=30000)
+            select_tab(page, w["tab"])
+            target = next(r for r in read_rows(page, w["level_rx"], w["gym_rx"])
                           if r["date"] == target["date"] and r["court"] == target["court"])
             if not target["open"]:
                 raise RuntimeError("spot gone after login")
@@ -397,6 +457,84 @@ def buy(page: Page, url: str, venue: str, target: dict, level_rx, state: dict) -
         return 1
 
 
+
+# ---------- probe (live dry run, never pays) ----------
+
+def dump_page(page: Page, label: str) -> None:
+    """Log the page's form structure (names/types only, never values) so selectors can be fixed from public logs."""
+    log(f"--- {label}: {page.url.split('?')[0]}  title={page.title()!r}")
+    js = """() => {
+      const vis = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+      const out = [];
+      document.querySelectorAll('input,select,textarea,button,iframe').forEach(e => {
+        if (e.type === 'hidden') return;
+        const a = n => e.getAttribute(n) || '';
+        let lbl = '';
+        if (e.id) { const l = document.querySelector(`label[for="${e.id}"]`); if (l) lbl = l.innerText.trim(); }
+        if (!lbl) { const r = e.closest('tr,label,div'); if (r) lbl = r.innerText.trim().replace(/\\s+/g,' ').slice(0,60); }
+        out.push([e.tagName.toLowerCase(), a('type'), a('name'), a('id'), a('autocomplete'), a('placeholder'),
+                  e.tagName==='BUTTON' ? e.innerText.trim() : (['submit','button','image'].includes(e.type) ? a('value') || a('alt') : ''),
+                  e.tagName==='IFRAME' ? (a('src').split('?')[0]) : '', vis(e) ? 'vis' : 'hid', lbl].join(' | '));
+      });
+      return out.slice(0, 120);
+    }"""
+    for frame in page.frames:
+        try:
+            items = frame.evaluate(js)
+        except Exception:
+            continue
+        if items:
+            log(f"  frame {frame.url.split('?')[0]}  ({len(items)} controls)  tag|type|name|id|autocomplete|placeholder|button|iframe|vis|label")
+            for it in items:
+                print("    " + it, flush=True)
+
+
+def probe(page: Page) -> int:
+    """Live dry run: pick a venue tab, take the first open session, fill the form with
+    placeholder info, click Checkout, and dump the next page. Never clicks Pay."""
+    url = env("NYU_LGA_URL") or DEFAULT_LGA_URL
+    venue = env("NYU_PROBE_VENUE") or "Brandeis"
+    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+    dump_page(page, "signup page (before tab)")
+    tabs = page.evaluate("""() => [...document.querySelectorAll('a,button,li,option')]
+        .map(e => (e.innerText||'').trim().replace(/\\s+/g,' ')).filter(t => /laguardia|beacon|brandeis|w50|clinic/i.test(t) && t.length < 60)""")
+    log(f"venue-like controls: {tabs}")
+    clicked = select_tab(page, venue)
+    log(f"select_tab({venue!r}) -> {clicked}; url now {page.url}")
+    rows = read_rows(page, gym_rx=re.compile(re.escape(venue), re.I))
+    if not rows:
+        log("no rows for that venue after tab click; all rows on page:")
+        rows = read_rows(page)
+    for r in rows:
+        print("    " + " ".join(r["row"].inner_text().split()), flush=True)
+    target = next((r for r in rows if r["open"]), None)
+    if not target:
+        log("nothing open to probe the checkout with")
+        return 0
+    log(f"probing with {target['date']} C{target['court']} ({target['status']})")
+    for k, v in (("NYU_FIRST", "Test"), ("NYU_LAST", "Probe"), ("NYU_EMAIL", "probe@example.com")):
+        os.environ.setdefault(k, v)
+    try:
+        fill_booking_form(page, target["row"])
+        log("booking form filled OK")
+        click_checkout(page)
+        log("clicked Checkout")
+    except Exception as e:
+        log(f"FAILED before/at Checkout: {str(e).splitlines()[0][:150]}")
+        dump_page(page, "page at failure")
+        return 1
+    dump_page(page, "page after Checkout")
+    for k, v in (("NYU_CARD_NUMBER", "4111111111111111"), ("NYU_CARD_EXP", "04/28"), ("NYU_CARD_CVV", "123")):
+        os.environ.setdefault(k, v)
+    try:
+        fill_card(page)
+        log("card fields found and filled (dummy card)")
+    except Exception as e:
+        log(f"card step: {str(e).splitlines()[0][:150]}")
+    pay = find_pay_button(page)
+    log(f"pay button: {'FOUND (not clicked)' if pay else 'NOT FOUND'}")
+    return 0
+
 # ---------- main ----------
 
 def run(args) -> int:
@@ -413,6 +551,11 @@ def run(args) -> int:
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=not args.headed)
         page = browser.new_page(viewport={"width": 1280, "height": 1800})
+        if mode == "probe":
+            try:
+                return probe(page)
+            finally:
+                browser.close()
         try:
             for w in watches():
                 venue = w["venue"]
@@ -422,9 +565,11 @@ def run(args) -> int:
                     log(f"{venue}: load failed ({type(e).__name__})")
                     sighting(venue, "-", "-", "error", f"load failed: {type(e).__name__}")
                     continue
-                rows = read_rows(page, w["level_rx"])
+                if not select_tab(page, w["tab"]):
+                    log(f"{venue}: tab '{w['tab']}' not found")
+                rows = read_rows(page, w["level_rx"], w["gym_rx"])
                 if not rows:
-                    log(f"{venue}: no matching rows (layout change, or no sessions at that level)")
+                    log(f"{venue}: no matching rows (tab didn't switch, layout change, or no sessions at that level)")
                     continue
 
                 log(f"{venue}: " + " | ".join(f"{r['date']} C{r['court']} {r['status']}" for r in rows))
@@ -441,13 +586,13 @@ def run(args) -> int:
                         else:
                             ok = r["count"] >= group
                             enough |= ok
-                            alerts.append(f"{venue} {r['date']} Court {r['court']}: {r['count']} open"
+                            alerts.append(f"{venue} {r['date']} Court {r['court']}: {fmt_count(r['count'])} open"
                                           + (f" ✅ enough for {group}" if ok else f" (need {group})"))
 
                 if mode == "buy" and rc == 0:
                     cand = next((r for r in rows if r["open"] and wanted(r["date"], targets)), None)
                     if cand:
-                        rc = buy(page, w["url"], venue, cand, w["level_rx"], state)
+                        rc = buy(page, w, cand, state)
                         mode = "done"  # at most one purchase per run
         finally:
             browser.close()
