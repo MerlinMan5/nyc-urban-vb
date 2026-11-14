@@ -549,6 +549,17 @@ def probe(page: Page) -> int:
     placeholder info, click Checkout, and dump the next page. Never clicks Pay."""
     url = env("NYU_LGA_URL") or DEFAULT_LGA_URL
     venue = env("NYU_PROBE_VENUE") or "Brandeis"
+    # 1. what alert mode would see at each watched venue (with its filters)
+    for w in watches():
+        page.goto(w["url"], wait_until="domcontentloaded", timeout=30000)
+        ok = select_tab(page, w["tab"])
+        all_rows = read_rows(page)
+        kept = read_rows(page, w["level_rx"], w["gym_rx"])
+        log(f"[watch {w['venue']}] tab={ok}  rows on tab={len(all_rows)}  kept by filters={len(kept)}")
+        for r in all_rows:
+            mark = "KEEP" if any(r["row"].inner_text() == k["row"].inner_text() for k in kept) else "skip"
+            print(f"    {mark}  " + " ".join(r["row"].inner_text().split()), flush=True)
+    # 2. checkout dry run
     page.goto(url, wait_until="domcontentloaded", timeout=30000)
     dump_page(page, "signup page (before tab)")
     tabs = page.evaluate("""() => [...document.querySelectorAll('a,button,li,option')]
