@@ -2,7 +2,7 @@ name: watch
 
 on:
   schedule:
-    # Every 5 min, 24/7 (free on a public repo). No DST adjustment needed.
+    # Every 5 min,  24/7 (free on a public repo). No DST adjustment needed.
     - cron: "*/5 * * * *"
   push:
     branches: [probe]   # pushing to the "probe" branch runs a live probe (never pays)
