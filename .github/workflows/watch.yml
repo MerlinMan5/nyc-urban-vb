@@ -1,0 +1,99 @@
+name: watch
+
+on:
+  schedule:
+    # Fridays 9am–5pm ET while EST is in effect (UTC-5).
+    # When daylight saving starts in March, change 14-21 to 13-20.
+    - cron: "*/5 14-21 * * 5"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Stop before clicking Pay"
+        type: boolean
+        default: true
+      targets:
+        description: "today | any | space-separated dates like 11/20 12/04 (blank = repo default)"
+        type: string
+        default: ""
+      url:
+        description: "Session page URL override (e.g. another venue with open spots, for testing)"
+        type: string
+        default: ""
+      screenshots:
+        description: "Upload screenshots (PUBLIC repo: they may show your name/email)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nyurban
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Run bot
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
+          SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.screenshots && '1' || '0' }}
+          NYU_TARGETS: ${{ inputs.targets || vars.NYU_TARGETS || 'today' }}
+          NYU_URL: ${{ inputs.url || vars.NYU_URL }}
+          NYU_FIRST: ${{ secrets.NYU_FIRST }}
+          NYU_LAST: ${{ secrets.NYU_LAST }}
+          NYU_EMAIL: ${{ secrets.NYU_EMAIL }}
+          NYU_USERNAME: ${{ secrets.NYU_USERNAME }}
+          NYU_PASSWORD: ${{ secrets.NYU_PASSWORD }}
+          NYU_CARD_NUMBER: ${{ secrets.NYU_CARD_NUMBER }}
+          NYU_CARD_EXP: ${{ secrets.NYU_CARD_EXP }}
+          NYU_CARD_CVV: ${{ secrets.NYU_CARD_CVV }}
+          NYU_CARD_ZIP: ${{ secrets.NYU_CARD_ZIP }}
+          NYU_NTFY_TOPIC: ${{ secrets.NYU_NTFY_TOPIC }}
+        run: python bot.py
+
+      - name: Save state & sightings
+        if: always()
+        run: |
+          git config user.name "nyurban-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json sightings.csv
+          if git diff --cached --quiet; then
+            echo "no state change"
+          else
+            git commit -m "bot: update state/sightings"
+            for i in 1 2 3; do
+              git pull --rebase --quiet && git push && break
+              sleep 3
+            done
+          fi
+
+      - name: Upload screenshots
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: shots
+          path: shots/
+          retention-days: 1
+          if-no-files-found: ignore
