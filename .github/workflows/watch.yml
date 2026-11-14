@@ -2,10 +2,8 @@ name: watch
 
 on:
   schedule:
-    # Every 5 min, every day, 9am–9pm ET while EST is in effect (UTC-5).
-    # Spots for future Fridays can open any day, not just session day.
-    # When daylight saving starts in March, change to "13-23,0" (same local hours).
-    - cron: "*/5 14-23,0-1 * * *"
+    # Every 5 min, 24/7 (free on a public repo). No DST adjustment needed.
+    - cron: "*/5 * * * *"
   push:
     branches: [probe]   # pushing to the "probe" branch runs a live probe (never pays)
   workflow_dispatch:

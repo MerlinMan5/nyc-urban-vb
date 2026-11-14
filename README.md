@@ -6,7 +6,7 @@ Watched sessions, in priority order:
 1. **LaGuardia H.S.**: any session
 2. **Beacon**: **Advanced Intermediate** only (plain "Advanced" is ignored)
 
-Runs on GitHub Actions every 5 min, 9am–9pm ET, every day.
+Runs on GitHub Actions every 5 min, 24/7.
 
 ## Alerts
 
@@ -49,5 +49,4 @@ Buy mode also needs Secrets `NYU_FIRST`, `NYU_LAST`, `NYU_EMAIL`, `NYU_CARD_NUMB
 ## Notes
 
 - Public repo: logs and `sightings.csv` are public. The bot never prints personal info.
-- DST: the cron is in UTC. When daylight saving starts in March, change `14-23,0-1` → `13-23,0`.
 - Local: `pip install -r requirements.txt && playwright install chromium && python bot.py --headed`
