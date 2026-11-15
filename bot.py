@@ -619,6 +619,13 @@ def run(args) -> int:
     alerts: list[str] = []
     rc = 0
 
+    if mode == "ping":
+        if not env("NYU_NTFY_TOPIC"):
+            log("ping: NYU_NTFY_TOPIC is not set")
+            return 1
+        notify("NY Urban bot is connected ✅ You'll get alerts here when courts open.")
+        return 0
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=not args.headed)
         page = browser.new_page(viewport={"width": 1280, "height": 1800})

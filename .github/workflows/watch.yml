@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "alert = observe & notify | probe = live dry run of the checkout flow (never pays) | buy = single ticket"
+        description: "alert = observe & notify | ping = send a test notification | probe = live dry run of checkout (never pays) | buy = single ticket"
         type: choice
-        options: [alert, probe, buy]
+        options: [alert, ping, probe, buy]
         default: alert
       probe_venue:
         description: "probe mode: venue tab to test with (needs an open session)"
