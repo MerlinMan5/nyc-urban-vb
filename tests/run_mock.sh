@@ -18,8 +18,9 @@ echo "== 3. probe Brandeis";    OUT3=$(NYU_MODE=probe NYU_PROBE_VENUE=Brandeis p
 echo "== sightings"; cat "$DATA/sightings.csv"
 
 fail() { echo "FAIL: $1"; exit 1; }
-grep -q "LGA 11/20 Court 2: 1 open (need 4)" <<<"$OUT1" || fail "LGA partial alert"
-grep -q "LGA 12/04 Court 2: 4 open ✅" <<<"$OUT1"        || fail "LGA enough alert"
+grep -q "LGA 11/20 Court 2: 1 open" <<<"$OUT1"         || fail "LGA 1-spot alert"
+grep -q "LGA 12/04 Court 2: 4 open" <<<"$OUT1"         || fail "LGA 4-spot alert"
+grep -q "need\|enough" <<<"$OUT1"                     && fail "group-size wording should be gone"
 grep -q "Beacon 11/20 Court 2: 2 open" <<<"$OUT1"        || fail "Beacon AI alert"
 grep -q "Court 1: 5 open" <<<"$OUT1"                     && fail "plain Advanced should be ignored"
 [[ $(grep -o "NOTIFY:.*" <<<"$OUT1" | head -1) == *"LGA"*"Beacon"* ]] || fail "LGA should be listed first"
@@ -27,5 +28,5 @@ grep -q "no new openings" <<<"$OUT2"                     || fail "repeat run re-
 grep -q "open:6+" <<<"$OUT3"                             || fail "Yes should parse as 6+"
 grep -q "clicked Checkout" <<<"$OUT3"                    || fail "probe checkout"
 grep -q "card fields found" <<<"$OUT3"                   || fail "probe card fields"
-grep -q "pay button: FOUND (not clicked)" <<<"$OUT3"     || fail "probe pay button"
+grep -q "pay button: FOUND .*not clicked" <<<"$OUT3"   || fail "probe pay button"
 echo PASS

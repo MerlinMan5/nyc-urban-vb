@@ -10,15 +10,15 @@ Runs on GitHub Actions every 5 min, 24/7.
 
 ## Alerts
 
-One push per run, and only when something new opens or a count goes up. Each court is listed separately because the group of 4 needs one court:
+One push per run, and only when a court newly opens or its count goes up. One line per court:
 
 ```
-LGA 11/20 Court 2: 1 open (need 4)
-LGA 12/04 Court 2: 4 open ✅ enough for 4
-Beacon 11/20 Court 2: 2 open (need 4)
+LGA 11/20 Court 2: 1 open
+LGA 12/04 Court 2: 4 open
+Beacon 11/20 Court ?: 2 open
 ```
 
-The alert is marked urgent when a single court has at least 4 open. The site shows the exact count when 5 or fewer spots are left, and "Yes" when there are more. The bot reports "Yes" as `6+`.
+The site shows the exact count when 5 or fewer spots are left, and "Yes" when there are more. The bot reports "Yes" as `6+`.
 
 Every status change is appended to `sightings.csv` (venue, session, court, status). That's the history of when spots open.
 
@@ -33,10 +33,9 @@ Optional Variables:
 | Variable | Default | Meaning |
 |---|---|---|
 | `NYU_TARGETS` | `any` | `any`, `today`, or `11/20 12/04` |
-| `NYU_GROUP_SIZE` | `4` | spots needed on one court for the ✅ / urgent alert |
 | `NYU_LGA_URL` | LaGuardia Friday page | signup page URL |
 | `NYU_BEACON_URL` | same page | only if Beacon turns out to have its own URL |
-| `NYU_MODE` | `alert` | `buy` = old single-ticket auto-buy (not suited to a group of 4) |
+| `NYU_MODE` | `alert` | `buy` = old single-ticket auto-buy  |
 
 Buy mode also needs Secrets `NYU_FIRST`, `NYU_LAST`, `NYU_EMAIL`, `NYU_CARD_NUMBER`, `NYU_CARD_EXP` (MM/YY), `NYU_CARD_CVV`, `NYU_CARD_ZIP`, and optionally `NYU_USERNAME`/`NYU_PASSWORD`. It buys at most one ticket per date (tracked in `state.json`).
 

@@ -70,7 +70,6 @@ jobs:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '0' }}
           SCREENSHOTS: ${{ github.event_name == 'workflow_dispatch' && inputs.screenshots && '1' || '0' }}
           NYU_TARGETS: ${{ inputs.targets || vars.NYU_TARGETS || 'any' }}
-          NYU_GROUP_SIZE: ${{ vars.NYU_GROUP_SIZE || '4' }}
           NYU_LGA_URL: ${{ vars.NYU_LGA_URL }}
           NYU_BEACON_URL: ${{ vars.NYU_BEACON_URL }}
           NYU_NTFY_TOPIC: ${{ secrets.NYU_NTFY_TOPIC }}

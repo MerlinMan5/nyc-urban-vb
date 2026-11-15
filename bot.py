@@ -5,18 +5,17 @@ Each run:
   1. Loads every watched session page (LaGuardia; Beacon "Advanced Intermediate" only).
   2. Logs each row's status (+ spots left when the site shows a number).
   3. Appends changes to sightings.csv and pushes a phone alert when spots open
-     or the count goes up. Alerts are per court, since the group of 4 needs one court.
+     or the count goes up. One line per court.
      LaGuardia is listed first.
 
 NYU_MODE=buy enables the old single-ticket auto-buy for the first open match.
-It buys ONE ticket, so it doesn't fit a group of 4; alert mode is the default.
+It buys ONE ticket; alert mode is the default.
 
 Never prints personal info, so public Actions logs are safe.
 
 Env:
   NYU_NTFY_TOPIC     phone push via ntfy.sh (secret)
   NYU_TARGETS        "any" (default) | "today" | "11/20 12/04"
-  NYU_GROUP_SIZE     4 (default) — alerts say whether a court has enough spots
   NYU_LGA_URL        LaGuardia page (default below)
   NYU_BEACON_URL     Beacon page; Beacon is skipped until this is set
   NYU_MODE           "alert" (default) | "buy"
@@ -65,7 +64,7 @@ def env(name: str, default: str = "") -> str:
     return (os.environ.get(name) or default).strip()
 
 
-def notify(msg: str, urgent: bool = False) -> None:
+def notify(msg: str) -> None:
     log("NOTIFY: " + msg.replace("\n", " / "))
     topic = env("NYU_NTFY_TOPIC")
     if not topic:
@@ -73,7 +72,7 @@ def notify(msg: str, urgent: bool = False) -> None:
     try:
         req = urllib.request.Request(
             f"https://ntfy.sh/{topic}", data=msg.encode(),
-            headers={"Title": "NY Urban volleyball", "Priority": "urgent" if urgent else "high",
+            headers={"Title": "NY Urban volleyball", "Priority": "high",
                      "Tags": "volleyball"},
         )
         urllib.request.urlopen(req, timeout=10)
@@ -613,13 +612,11 @@ def probe(page: Page) -> int:
 
 def run(args) -> int:
     targets = env("NYU_TARGETS") or "any"
-    group = int(env("NYU_GROUP_SIZE") or "4")
     mode = env("NYU_MODE") or "alert"
     state = load_state()
-    log(f"start  mode={mode}  targets={targets}  group={group}")
+    log(f"start  mode={mode}  targets={targets}")
 
     alerts: list[str] = []
-    enough = False
     rc = 0
 
     with sync_playwright() as p:
@@ -655,13 +652,7 @@ def run(args) -> int:
                         sighting(venue, r["date"], r["court"], r["status"], "baseline" if old is None else "changed")
                         state["last_seen"][key] = r["status"]
                     if r["open"] and wanted(r["date"], targets) and improved(old, r["status"]):
-                        if r["count"] is None:
-                            alerts.append(f"{venue} {r['date']} Court {r['court']}: open (count not shown)")
-                        else:
-                            ok = r["count"] >= group
-                            enough |= ok
-                            alerts.append(f"{venue} {r['date']} Court {r['court']}: {fmt_count(r['count'])} open"
-                                          + (f" ✅ enough for {group}" if ok else f" (need {group})"))
+                        alerts.append(f"{venue} {r['date']} Court {r['court']}: {fmt_count(r['count'])} open")
 
                 if mode == "buy" and rc == 0:
                     cand = next((r for r in rows if r["open"] and wanted(r["date"], targets)), None)
@@ -673,7 +664,7 @@ def run(args) -> int:
             save_state(state)
 
     if alerts:
-        notify("\n".join(alerts), urgent=enough)
+        notify("\n".join(alerts))
     else:
         log("no new openings")
     return rc
