@@ -12,3 +12,4 @@ seen_at,venue,session,court,status,action
 2026-11-14 08:17 ET,Beacon,12/11,?,sold_out,baseline
 2026-11-14 08:17 ET,Beacon,12/18,?,sold_out,baseline
 2026-11-16 12:15 ET,LGA,-,-,error,load failed: TimeoutError
+2026-11-16 12:30 ET,Beacon,11/20,?,open:2,changed
