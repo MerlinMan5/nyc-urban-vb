@@ -299,7 +299,15 @@ def build_catalog(scans: dict) -> dict:
 def alert_line(venue: str, r: dict) -> str:
     court = f" · Court {r['court']}" if r["court"] != "?" else ""
     level = f" {r['level']}" if r["level"] else ""
-    return f"{VENUE_LABEL.get(venue, venue)} {r['date']}{level}{court}: {fmt_count(r['count'])} open"
+    start = f" {r['start']}" if r.get("start") else ""
+    return f"{VENUE_LABEL.get(venue, venue)} {r['date']}{start}{level}{court}: {fmt_count(r['count'])} open"
+
+
+KEY_VERSION = 3  # bump when the row key format changes; that run re-baselines silently
+
+
+def row_key(venue: str, r: dict) -> str:
+    return f"{venue} {r['date']} {r.get('start', '')} {r['level']} C{r['court']}"
 
 
 # ---------- state & sightings ----------
@@ -347,7 +355,7 @@ def read_rows(page: Page, level_rx: re.Pattern | None = None, gym_rx: re.Pattern
         cm = re.search(r"Court\s*(\d+)", text, re.I)
         box = tr.locator("input[type=checkbox], input[type=radio]")
         tds = tr.locator("td")
-        level, gym = parse_level_gym([" ".join(tds.nth(j).inner_text().split()) for j in range(tds.count())])
+        level, gym, start = parse_level_gym([" ".join(tds.nth(j).inner_text().split()) for j in range(tds.count())])
         last_cell = " ".join(tds.last.inner_text().split()) if tds.count() else ""
         nm = re.search(r"\b(\d+)\b", last_cell) if "/" not in last_cell else None
         sold_out = "sold out" in text.lower()
@@ -363,6 +371,7 @@ def read_rows(page: Page, level_rx: re.Pattern | None = None, gym_rx: re.Pattern
             "court": cm.group(1) if cm else "?",
             "level": level,
             "gym": gym,
+            "start": start,
             "text": text,
             "open": is_open,
             "count": count,  # None = site didn't show a number
@@ -372,16 +381,18 @@ def read_rows(page: Page, level_rx: re.Pattern | None = None, gym_rx: re.Pattern
     return rows
 
 
-def parse_level_gym(cells: list[str]) -> tuple[str, str]:
+def parse_level_gym(cells: list[str]) -> tuple[str, str, str]:
     """Cells look like [select, 'Fri 11/20', ('LaGuardia H.S.'), 'Intermediate - Court 1', '7:00 pm - 10:30 pm', fee, avail].
     Level = cell before the time, minus ' - Court N'; gym = cell between date and level, if any."""
     di = next((i for i, c in enumerate(cells) if re.search(r"\b\d{1,2}/\d{1,2}\b", c)), None)
     ti = next((i for i, c in enumerate(cells) if re.search(r"\d\s*(am|pm)\b", c, re.I)), None)
     if di is None or ti is None or ti - 1 <= di:
-        return "", ""
+        return "", "", ""
     level = re.sub(r"\s*[-–]?\s*Court\s*\d+\s*$", "", cells[ti - 1], flags=re.I).strip(" -")
     gym = cells[ti - 2] if ti - 2 > di else ""
-    return level, gym
+    m = re.search(r"\d{1,2}(:\d{2})?\s*(am|pm)", cells[ti], re.I)
+    start = re.sub(r":00\s*", "", m.group(0)).replace(" ", "").lower() if m else ""
+    return level, gym, start
 
 
 def fmt_count(c: int | None) -> str:
@@ -721,7 +732,7 @@ def probe(page: Page) -> int:
             continue
         log(f"[venue {key}] {len(rows)} sessions; levels={sorted({r['level'] for r in rows})}")
         for r in rows:
-            print(f"    {r['date']} | level={r['level']!r} gym={r['gym']!r} court={r['court']} | {r['status']}", flush=True)
+            print(f"    {r['date']} {r['start']} | level={r['level']!r} gym={r['gym']!r} court={r['court']} | {r['status']}", flush=True)
     log(f"catalog: {json.dumps(build_catalog(scans))[:600]}")
     if env("NYU_PREFS_URL"):
         try:
@@ -811,6 +822,9 @@ def run(args) -> int:
 
 def alert(page: Page, url: str) -> int:
     state = load_state()
+    rebaseline = state.get("key_version") != KEY_VERSION
+    if rebaseline:
+        log(f"row key format changed (v{state.get('key_version')} -> v{KEY_VERSION}); re-baselining without alerts")
     users, source = load_users()
     log(f"people: {len(users)} ({source}); active: {sum(1 for u in users if not u.get('paused'))}")
 
@@ -825,13 +839,13 @@ def alert(page: Page, url: str) -> int:
             continue
         log(f"{venue}: " + (" | ".join(f"{r['date']} {r['level'] or '-'} C{r['court']} {r['status']}" for r in rows) or "no sessions"))
         for r in rows:
-            key = f"{venue} {r['date']} {r['level']} C{r['court']}"
+            key = row_key(venue, r)
             old = state["last_seen"].get(key)
             new_seen[key] = r["status"]
             if old != r["status"]:
                 sighting(venue, r["date"], f"{r['level']} C{r['court']}".strip(), r["status"],
                          "baseline" if old is None else "changed")
-            if r["open"] and improved(old, r["status"]):
+            if r["open"] and improved(old, r["status"]) and not rebaseline:
                 any_new = True
                 line = alert_line(venue, r)
                 for u in users:
@@ -839,6 +853,8 @@ def alert(page: Page, url: str) -> int:
                         per_user.setdefault(u["id"], []).append(line)
 
     state["last_seen"] = new_seen
+    if all(v is not None for v in scans.values()):
+        state["key_version"] = KEY_VERSION
     catalog = build_catalog(scans)
     digest = json.dumps(catalog, sort_keys=True)
     if source == "prefs" and digest != state.get("catalog_digest") and all(v is not None for v in scans.values()):
