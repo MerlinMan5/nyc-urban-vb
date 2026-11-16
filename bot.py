@@ -64,10 +64,10 @@ def env(name: str, default: str = "") -> str:
     return (os.environ.get(name) or default).strip()
 
 
-def notify(msg: str) -> None:
-    log("NOTIFY: " + msg.replace("\n", " / "))
-    topic = env("NYU_NTFY_TOPIC")
-    if not topic:
+def notify(msg: str, topic: str | None = None, who: str = "legacy") -> None:
+    log(f"NOTIFY[{who}]: " + msg.replace("\n", " / "))
+    topic = topic if topic is not None else env("NYU_NTFY_TOPIC")
+    if not topic or env("NYU_NOTIFY_DRY") == "1":
         return
     try:
         req = urllib.request.Request(
@@ -153,6 +153,155 @@ def _settle(page: Page) -> None:
     page.wait_for_timeout(1000)
 
 
+
+# ---------- venues (tabs on the signup page) ----------
+
+VENUES = [
+    # key, label shown to people, exact tab text, optional row filters that confirm the tab really switched
+    {"key": "LGA", "label": "LaGuardia · Fri", "tab": "Laguardia / Fri.", "gym_rx": r"la\s*guardia"},
+    {"key": "W50", "label": "W50th Street Campus · Fri", "tab": "W50th Street Campus / Fri."},
+    {"key": "Beacon", "label": "Beacon · Fri", "tab": "Beacon / Fri.", "gym_rx": r"beacon"},
+    {"key": "BrandeisFri", "label": "Brandeis · Fri", "tab": "Brandeis / Fri.", "day_rx": r"\bFri\b"},
+    {"key": "BrandeisSun", "label": "Brandeis · Sun", "tab": "Brandeis / Sunday", "day_rx": r"\bSun\b"},
+    {"key": "Clinics", "label": "Sunday Clinics", "tab": "Clinics"},
+]
+VENUE_LABEL = {v["key"]: v["label"] for v in VENUES}
+
+# Before per-person prefs existed: LaGuardia (any level) + Beacon Advanced Intermediate -> NYU_NTFY_TOPIC
+LEGACY_RULES = [{"venue": "LGA", "levels": []}, {"venue": "Beacon", "levels": ["Advanced Intermediate"]}]
+
+
+def select_tab_exact(page: Page, text: str) -> bool:
+    want = " ".join(text.split()).lower()
+    for css in ("a", "button, [onclick]", "li"):
+        loc = page.locator(css)
+        for i in range(min(loc.count(), 300)):
+            el = loc.nth(i)
+            try:
+                if " ".join(el.inner_text().split()).lower() == want and el.is_visible():
+                    el.click()
+                    _settle(page)
+                    return True
+            except Exception:
+                pass
+    return select_tab(page, text.split("/")[0].strip())
+
+
+def row_sig(rows: list[dict]) -> tuple:
+    return tuple(r["text"] for r in rows)
+
+
+def scan_all(page: Page, url: str) -> dict:
+    """{venue_key: rows} for every tab; None for a tab that failed to load or didn't switch."""
+    out: dict = {}
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        default_sig = row_sig(read_rows(page))  # page opens on LaGuardia
+    except Exception as e:
+        log(f"page load failed ({type(e).__name__})")
+        return {v["key"]: None for v in VENUES}
+    for v in VENUES:
+        key = v["key"]
+        try:
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            clicked = select_tab_exact(page, v["tab"])
+            rows = read_rows(page)
+        except Exception as e:
+            log(f"{key}: load failed ({type(e).__name__})")
+            out[key] = None
+            continue
+        if not clicked or (key != "LGA" and rows and row_sig(rows) == default_sig):
+            log(f"{key}: tab '{v['tab']}' didn't switch; skipping this run")
+            out[key] = None
+            continue
+        if v.get("gym_rx"):
+            rows = [r for r in rows if re.search(v["gym_rx"], r["text"], re.I)]
+        if v.get("day_rx"):
+            rows = [r for r in rows if re.search(v["day_rx"], r["text"])]
+        out[key] = rows
+    return out
+
+
+# ---------- per-person preferences (Vercel app) ----------
+
+PREFS_AUDIENCE = "nyurban-prefs"
+
+
+def oidc_token() -> str | None:
+    url, tok = env("ACTIONS_ID_TOKEN_REQUEST_URL"), env("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+    if not (url and tok):
+        return None
+    req = urllib.request.Request(f"{url}&audience={PREFS_AUDIENCE}", headers={"Authorization": f"bearer {tok}"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.load(r)["value"]
+
+
+def prefs_api(method: str, body: dict | None = None):
+    base = env("NYU_PREFS_URL").rstrip("/")
+    if not base:
+        return None
+    jwt = oidc_token()
+    if not jwt:
+        return None
+    req = urllib.request.Request(
+        f"{base}/api/bot", method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Authorization": f"Bearer {jwt}", "Content-Type": "application/json", "User-Agent": "nyurban-bot"},
+    )
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.load(r)
+
+
+def load_users() -> tuple[list[dict], str]:
+    if env("NYU_USERS_FILE"):  # tests
+        return json.loads(Path(env("NYU_USERS_FILE")).read_text()), "file"
+    try:
+        data = prefs_api("GET")
+        if data is not None:
+            return data.get("users", []), "prefs"
+    except Exception as e:
+        log(f"prefs fetch failed ({type(e).__name__}: {str(e)[:80]}); using legacy topic")
+    topic = env("NYU_NTFY_TOPIC")
+    legacy = [{"id": "legacy", "name": "legacy", "topic": topic, "paused": False, "rules": LEGACY_RULES, "snooze": []}] if topic else []
+    return legacy, "legacy"
+
+
+def norm_date(d: str) -> str:
+    return "/".join(str(int(x)) for x in d.split("/"))
+
+
+def user_matches(u: dict, venue: str, row: dict) -> bool:
+    if u.get("paused") or not u.get("topic"):
+        return False
+    if norm_date(row["date"]) in {norm_date(d) for d in u.get("snooze", [])}:
+        return False
+    for rule in u.get("rules", []):
+        if rule.get("venue") != venue:
+            continue
+        levels = [l.strip().lower() for l in rule.get("levels", [])]
+        if not levels or row["level"].strip().lower() in levels:
+            return True
+    return False
+
+
+def build_catalog(scans: dict) -> dict:
+    cat = {}
+    for v in VENUES:
+        rows = scans.get(v["key"]) or []
+        cat[v["key"]] = {
+            "label": v["label"],
+            "levels": sorted({r["level"] for r in rows if r["level"]}),
+            "dates": sorted({r["date"] for r in rows}, key=lambda d: iso_date(d)),
+        }
+    return cat
+
+
+def alert_line(venue: str, r: dict) -> str:
+    court = f" · Court {r['court']}" if r["court"] != "?" else ""
+    level = f" {r['level']}" if r["level"] else ""
+    return f"{VENUE_LABEL.get(venue, venue)} {r['date']}{level}{court}: {fmt_count(r['count'])} open"
+
+
 # ---------- state & sightings ----------
 
 def load_state() -> dict:
@@ -198,6 +347,7 @@ def read_rows(page: Page, level_rx: re.Pattern | None = None, gym_rx: re.Pattern
         cm = re.search(r"Court\s*(\d+)", text, re.I)
         box = tr.locator("input[type=checkbox], input[type=radio]")
         tds = tr.locator("td")
+        level, gym = parse_level_gym([" ".join(tds.nth(j).inner_text().split()) for j in range(tds.count())])
         last_cell = " ".join(tds.last.inner_text().split()) if tds.count() else ""
         nm = re.search(r"\b(\d+)\b", last_cell) if "/" not in last_cell else None
         sold_out = "sold out" in text.lower()
@@ -211,12 +361,27 @@ def read_rows(page: Page, level_rx: re.Pattern | None = None, gym_rx: re.Pattern
         rows.append({
             "date": dm.group(1),
             "court": cm.group(1) if cm else "?",
+            "level": level,
+            "gym": gym,
+            "text": text,
             "open": is_open,
             "count": count,  # None = site didn't show a number
             "status": "sold_out" if sold_out else (f"open:{fmt_count(count)}" if enabled else "unavailable"),
             "row": tr,
         })
     return rows
+
+
+def parse_level_gym(cells: list[str]) -> tuple[str, str]:
+    """Cells look like [select, 'Fri 11/20', ('LaGuardia H.S.'), 'Intermediate - Court 1', '7:00 pm - 10:30 pm', fee, avail].
+    Level = cell before the time, minus ' - Court N'; gym = cell between date and level, if any."""
+    di = next((i for i, c in enumerate(cells) if re.search(r"\b\d{1,2}/\d{1,2}\b", c)), None)
+    ti = next((i for i, c in enumerate(cells) if re.search(r"\d\s*(am|pm)\b", c, re.I)), None)
+    if di is None or ti is None or ti - 1 <= di:
+        return "", ""
+    level = re.sub(r"\s*[-–]?\s*Court\s*\d+\s*$", "", cells[ti - 1], flags=re.I).strip(" -")
+    gym = cells[ti - 2] if ti - 2 > di else ""
+    return level, gym
 
 
 def fmt_count(c: int | None) -> str:
@@ -548,16 +713,24 @@ def probe(page: Page) -> int:
     placeholder info, click Checkout, and dump the next page. Never clicks Pay."""
     url = env("NYU_LGA_URL") or DEFAULT_LGA_URL
     venue = env("NYU_PROBE_VENUE") or "Brandeis"
-    # 1. what alert mode would see at each watched venue (with its filters)
-    for w in watches():
-        page.goto(w["url"], wait_until="domcontentloaded", timeout=30000)
-        ok = select_tab(page, w["tab"])
-        all_rows = read_rows(page)
-        kept = read_rows(page, w["level_rx"], w["gym_rx"])
-        log(f"[watch {w['venue']}] tab={ok}  rows on tab={len(all_rows)}  kept by filters={len(kept)}")
-        for r in all_rows:
-            mark = "KEEP" if any(r["row"].inner_text() == k["row"].inner_text() for k in kept) else "skip"
-            print(f"    {mark}  " + " ".join(r["row"].inner_text().split()), flush=True)
+    # 1. what alert mode sees at every venue tab
+    scans = scan_all(page, url)
+    for key, rows in scans.items():
+        if rows is None:
+            log(f"[venue {key}] FAILED to read")
+            continue
+        log(f"[venue {key}] {len(rows)} sessions; levels={sorted({r['level'] for r in rows})}")
+        for r in rows:
+            print(f"    {r['date']} | level={r['level']!r} gym={r['gym']!r} court={r['court']} | {r['status']}", flush=True)
+    log(f"catalog: {json.dumps(build_catalog(scans))[:600]}")
+    if env("NYU_PREFS_URL"):
+        try:
+            users, source = load_users()
+            log(f"prefs: source={source} people={len(users)}")
+        except Exception as e:
+            log(f"prefs: error {type(e).__name__}")
+    if env("NYU_PROBE_CHECKOUT") != "1":
+        return 0
     # 2. checkout dry run
     page.goto(url, wait_until="domcontentloaded", timeout=30000)
     dump_page(page, "signup page (before tab)")
@@ -611,13 +784,9 @@ def probe(page: Page) -> int:
 # ---------- main ----------
 
 def run(args) -> int:
-    targets = env("NYU_TARGETS") or "any"
     mode = env("NYU_MODE") or "alert"
-    state = load_state()
-    log(f"start  mode={mode}  targets={targets}")
-
-    alerts: list[str] = []
-    rc = 0
+    url = env("NYU_LGA_URL") or env("NYU_URL") or DEFAULT_LGA_URL
+    log(f"start  mode={mode}")
 
     if mode == "ping":
         if not env("NYU_NTFY_TOPIC"):
@@ -625,56 +794,68 @@ def run(args) -> int:
             return 1
         notify("NY Urban bot is connected ✅ You'll get alerts here when courts open.")
         return 0
+    if mode == "buy":
+        log("buy mode was retired; the bot is alert-only")
+        return 1
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=not args.headed)
         page = browser.new_page(viewport={"width": 1280, "height": 1800})
-        if mode == "probe":
-            try:
-                return probe(page)
-            finally:
-                browser.close()
         try:
-            for w in watches():
-                venue = w["venue"]
-                try:
-                    page.goto(w["url"], wait_until="domcontentloaded", timeout=30000)
-                except Exception as e:
-                    log(f"{venue}: load failed ({type(e).__name__})")
-                    sighting(venue, "-", "-", "error", f"load failed: {type(e).__name__}")
-                    continue
-                if not select_tab(page, w["tab"]):
-                    log(f"{venue}: tab '{w['tab']}' not found")
-                rows = read_rows(page, w["level_rx"], w["gym_rx"])
-                if not rows:
-                    log(f"{venue}: no matching rows (tab didn't switch, layout change, or no sessions at that level)")
-                    continue
-
-                log(f"{venue}: " + " | ".join(f"{r['date']} C{r['court']} {r['status']}" for r in rows))
-
-                for r in rows:
-                    key = f"{venue} {r['date']} C{r['court']}"
-                    old = state["last_seen"].get(key)
-                    if old != r["status"]:
-                        sighting(venue, r["date"], r["court"], r["status"], "baseline" if old is None else "changed")
-                        state["last_seen"][key] = r["status"]
-                    if r["open"] and wanted(r["date"], targets) and improved(old, r["status"]):
-                        alerts.append(f"{venue} {r['date']} Court {r['court']}: {fmt_count(r['count'])} open")
-
-                if mode == "buy" and rc == 0:
-                    cand = next((r for r in rows if r["open"] and wanted(r["date"], targets)), None)
-                    if cand:
-                        rc = buy(page, w, cand, state)
-                        mode = "done"  # at most one purchase per run
+            if mode == "probe":
+                return probe(page)
+            return alert(page, url)
         finally:
             browser.close()
-            save_state(state)
 
-    if alerts:
-        notify("\n".join(alerts))
-    else:
-        log("no new openings")
-    return rc
+
+def alert(page: Page, url: str) -> int:
+    state = load_state()
+    users, source = load_users()
+    log(f"people: {len(users)} ({source}); active: {sum(1 for u in users if not u.get('paused'))}")
+
+    scans = scan_all(page, url)
+    new_seen: dict = {}
+    per_user: dict[str, list[str]] = {}
+    any_new = False
+
+    for venue, rows in scans.items():
+        if rows is None:  # keep last known state for a tab we couldn't read
+            new_seen.update({k: v for k, v in state["last_seen"].items() if k.startswith(venue + " ")})
+            continue
+        log(f"{venue}: " + (" | ".join(f"{r['date']} {r['level'] or '-'} C{r['court']} {r['status']}" for r in rows) or "no sessions"))
+        for r in rows:
+            key = f"{venue} {r['date']} {r['level']} C{r['court']}"
+            old = state["last_seen"].get(key)
+            new_seen[key] = r["status"]
+            if old != r["status"]:
+                sighting(venue, r["date"], f"{r['level']} C{r['court']}".strip(), r["status"],
+                         "baseline" if old is None else "changed")
+            if r["open"] and improved(old, r["status"]):
+                any_new = True
+                line = alert_line(venue, r)
+                for u in users:
+                    if user_matches(u, venue, r):
+                        per_user.setdefault(u["id"], []).append(line)
+
+    state["last_seen"] = new_seen
+    catalog = build_catalog(scans)
+    digest = json.dumps(catalog, sort_keys=True)
+    if source == "prefs" and digest != state.get("catalog_digest") and all(v is not None for v in scans.values()):
+        try:
+            prefs_api("POST", {"venues": catalog})
+            state["catalog_digest"] = digest
+            log("catalog published")
+        except Exception as e:
+            log(f"catalog publish failed ({type(e).__name__})")
+    save_state(state)
+
+    by_id = {u["id"]: u for u in users}
+    for uid, lines in per_user.items():
+        notify("\n".join(lines), by_id[uid]["topic"], who=uid)
+    if not per_user:
+        log("new openings, but nobody's preferences match" if any_new else "no new openings")
+    return 0
 
 
 def main() -> None:

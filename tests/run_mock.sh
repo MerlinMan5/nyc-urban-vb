@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Offline test against tests/mock_site (venue tabs on one page, like the real site).
-#  1. alert run: LGA rows + Beacon "Advanced Intermediate" only (plain "Advanced" ignored)
+# Offline test against tests/mock_site (six venue tabs on one page, like the real site).
+#  1. per-person routing: each person only gets lines matching their venues/levels/snooze; paused gets nothing
 #  2. same page again: no repeat alerts
-#  3. probe mode on Brandeis ("Yes" = 6+): fills form, Checkout, finds card fields + Pay, never pays
+#  3. probe: reads every venue tab with levels
 set -euo pipefail
 cd "$(dirname "$0")/.."
 PORT=8765
@@ -10,23 +10,35 @@ DATA=$(mktemp -d)
 python3 -m http.server "$PORT" --directory tests/mock_site >/dev/null 2>&1 &
 SRV=$!; trap 'kill $SRV' EXIT; sleep 1
 
-export NYU_LGA_URL="http://localhost:$PORT/index.html" NYU_DATA_DIR="$DATA" NYU_TARGETS=any
+cat > "$DATA/users.json" <<'JSON'
+[
+  {"id":"jon","name":"Jon","topic":"t","paused":false,"snooze":[],
+   "rules":[{"venue":"LGA","levels":[]},{"venue":"Beacon","levels":["Advanced Intermediate"]}]},
+  {"id":"sam","name":"Sam","topic":"t","paused":false,"snooze":["12/04"],
+   "rules":[{"venue":"BrandeisFri","levels":[]},{"venue":"BrandeisSun","levels":["Advanced"]}]},
+  {"id":"kai","name":"Kai","topic":"t","paused":true,"snooze":[],
+   "rules":[{"venue":"LGA","levels":[]}]}
+]
+JSON
+export NYU_NOTIFY_DRY=1 NYU_LGA_URL="http://localhost:$PORT/index.html" NYU_DATA_DIR="$DATA" NYU_USERS_FILE="$DATA/users.json"
 
 echo "== 1. alert run";         OUT1=$(python3 bot.py); echo "$OUT1"
 echo "== 2. repeat (no alert)"; OUT2=$(python3 bot.py); echo "$OUT2"
-echo "== 3. probe Brandeis";    OUT3=$(NYU_MODE=probe NYU_PROBE_VENUE=Brandeis python3 bot.py); echo "$OUT3"
-echo "== sightings"; cat "$DATA/sightings.csv"
+echo "== 3. probe";             OUT3=$(NYU_MODE=probe python3 bot.py); echo "$OUT3"
 
 fail() { echo "FAIL: $1"; exit 1; }
-grep -q "LGA 11/20 Court 2: 1 open" <<<"$OUT1"         || fail "LGA 1-spot alert"
-grep -q "LGA 12/04 Court 2: 4 open" <<<"$OUT1"         || fail "LGA 4-spot alert"
-grep -q "need\|enough" <<<"$OUT1"                     && fail "group-size wording should be gone"
-grep -q "Beacon 11/20 Court 2: 2 open" <<<"$OUT1"        || fail "Beacon AI alert"
-grep -q "Court 1: 5 open" <<<"$OUT1"                     && fail "plain Advanced should be ignored"
-[[ $(grep -o "NOTIFY:.*" <<<"$OUT1" | head -1) == *"LGA"*"Beacon"* ]] || fail "LGA should be listed first"
-grep -q "no new openings" <<<"$OUT2"                     || fail "repeat run re-alerted"
-grep -q "open:6+" <<<"$OUT3"                             || fail "Yes should parse as 6+"
-grep -q "clicked Checkout" <<<"$OUT3"                    || fail "probe checkout"
-grep -q "card fields found" <<<"$OUT3"                   || fail "probe card fields"
-grep -q "pay button: FOUND .*not clicked" <<<"$OUT3"   || fail "probe pay button"
+J=$(grep "NOTIFY\[jon\]" <<<"$OUT1" || true); S=$(grep "NOTIFY\[sam\]" <<<"$OUT1" || true)
+grep -q "LaGuardia · Fri 11/20 Intermediate · Court 2: 1 open" <<<"$J" || fail "jon LGA 1"
+grep -q "LaGuardia · Fri 12/04 Intermediate · Court 2: 4 open" <<<"$J" || fail "jon LGA 4"
+grep -q "Beacon · Fri 11/20 Advanced Intermediate · Court 2: 2 open" <<<"$J" || fail "jon Beacon AI"
+grep -q "Beacon · Fri 11/20 Advanced · Court 1" <<<"$J"              && fail "jon should not get plain Advanced"
+grep -q "Brandeis" <<<"$J"                                            && fail "jon should not get Brandeis"
+grep -q "Brandeis · Fri 11/20 Intermediate · Court 1: 6+ open" <<<"$S" || fail "sam Brandeis Fri (Yes=6+)"
+grep -q "12/04" <<<"$S"                                               && fail "sam snoozed 12/04"
+grep -q "Brandeis · Sun 11/22 Advanced: 3 open" <<<"$S"               || fail "sam Brandeis Sun Advanced"
+grep -q "LaGuardia" <<<"$S"                                           && fail "sam should not get LGA"
+grep -q "NOTIFY\[kai\]" <<<"$OUT1"                                    && fail "paused kai got an alert"
+grep -q "no new openings" <<<"$OUT2"                                  || fail "repeat run re-alerted"
+grep -q "\[venue Clinics\] 1 sessions; levels=\['Beginner Clinic'\]" <<<"$OUT3" || fail "probe clinics"
+grep -q "\[venue W50\] 1 sessions" <<<"$OUT3"                          || fail "probe W50"
 echo PASS

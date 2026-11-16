@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>NY Urban volleyball alerts</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#1d1d1f; --mute:#6b6b70; --line:#e4e2dc; --accent:#1f6f5c; --accent-ink:#fff; --warn:#a2471b; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141414; --card:#1e1e1f; --ink:#ececec; --mute:#9a9aa0; --line:#2e2e30; --accent:#4fb39a; --accent-ink:#0d1f1a; --warn:#e08a5c; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:24px 16px 96px; }
+  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-0.01em; }
+  .sub { color:var(--mute); margin:0 0 20px; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); margin:0 0 12px; font-weight:600; }
+  label.row { display:flex; align-items:center; gap:10px; padding:8px 0; cursor:pointer; }
+  input[type=checkbox] { width:20px; height:20px; accent-color:var(--accent); flex:none; }
+  input[type=text] { width:100%; font:inherit; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:transparent; color:inherit; }
+  .venue { border-top:1px solid var(--line); padding:6px 0; }
+  .venue:first-of-type { border-top:0; }
+  .venue .name { font-weight:600; }
+  .levels { margin:0 0 6px 30px; display:none; }
+  .venue.on .levels { display:block; }
+  .levels label.row { padding:4px 0; font-size:15px; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { border:1px solid var(--line); border-radius:999px; padding:6px 12px; font-size:14px; cursor:pointer; user-select:none; }
+  .chip.on { background:var(--warn); border-color:var(--warn); color:#fff; text-decoration:line-through; }
+  .topic { display:flex; gap:8px; align-items:center; }
+  code { font:14px ui-monospace, SFMono-Regular, Menlo, monospace; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; flex:1; overflow-wrap:anywhere; }
+  button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; padding:9px 14px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .muted { color:var(--mute); font-size:14px; }
+  .toggle { display:flex; justify-content:space-between; align-items:center; }
+  .bar { position:fixed; left:0; right:0; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:12px 16px; display:flex; justify-content:center; gap:12px; align-items:center; }
+  .bar .status { color:var(--mute); font-size:14px; min-width:120px; }
+  .err { color:var(--warn); }
+  ol { padding-left:20px; margin:8px 0 0; } ol li { margin:4px 0; }
+</style>
+</head>
+<body>
+<main id="app"><p class="muted">Loading…</p></main>
+<div class="bar" id="bar" hidden><span class="status" id="status"></span><button class="primary" id="save">Save</button></div>
+
+<script>
+const FALLBACK = {
+  LGA: { label: 'LaGuardia · Fri' }, W50: { label: 'W50th Street Campus · Fri' }, Beacon: { label: 'Beacon · Fri' },
+  BrandeisFri: { label: 'Brandeis · Fri' }, BrandeisSun: { label: 'Brandeis · Sun' }, Clinics: { label: 'Sunday Clinics' },
+};
+const t = new URLSearchParams(location.search).get('t');
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+let state, catalog, dirty = false;
+
+function setStatus(msg, err) { const s = $('#status'); s.textContent = msg; s.className = 'status' + (err ? ' err' : ''); }
+function markDirty() { dirty = true; setStatus('Unsaved changes'); }
+
+async function load() {
+  if (!t) { $('#app').innerHTML = '<h1>Volleyball alerts</h1><p class="sub">Open the private link you were sent.</p>'; return; }
+  const r = await fetch(`/api/me?t=${encodeURIComponent(t)}`);
+  if (!r.ok) { $('#app').innerHTML = '<h1>Link not found</h1><p class="sub">Ask Jonathan for a new link.</p>'; return; }
+  const data = await r.json();
+  state = data.user; catalog = data.catalog?.venues && Object.keys(data.catalog.venues).length ? data.catalog.venues : FALLBACK;
+  render();
+  $('#bar').hidden = false;
+  setStatus(data.catalog?.updated ? `Sessions as of ${new Date(data.catalog.updated).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })}` : '');
+}
+
+function rule(venue) { return state.rules.find((r) => r.venue === venue); }
+
+function render() {
+  const venues = Object.entries(catalog);
+  const dates = [...new Set(venues.filter(([k]) => rule(k)).flatMap(([, v]) => v.dates || []))]
+    .sort((a, b) => { const [am, ad] = a.split('/').map(Number), [bm, bd] = b.split('/').map(Number); return ((am + 6) % 12 - (bm + 6) % 12) || ad - bd; });
+
+  $('#app').innerHTML = `
+    <h1>Volleyball alerts</h1>
+    <p class="sub">Pick what you want to hear about. You'll get a push when a matching session opens or gains spots. Your settings don't affect anyone else's.</p>
+
+    <div class="card">
+      <h2>You</h2>
+      <input type="text" id="name" value="${esc(state.name)}" maxlength="40" aria-label="Your name">
+      <div class="toggle" style="margin-top:12px">
+        <div><div style="font-weight:600">Pause all alerts</div><div class="muted">Stop pushes without losing your picks</div></div>
+        <input type="checkbox" id="paused" ${state.paused ? 'checked' : ''}>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Venues &amp; levels</h2>
+      ${venues.map(([key, v]) => {
+        const r = rule(key); const levels = v.levels || [];
+        return `<div class="venue ${r ? 'on' : ''}" data-venue="${esc(key)}">
+          <label class="row"><input type="checkbox" class="v" ${r ? 'checked' : ''}><span class="name">${esc(v.label || key)}</span></label>
+          <div class="levels">
+            <label class="row"><input type="checkbox" class="any" ${!r || !r.levels.length ? 'checked' : ''}><span>Any level</span></label>
+            ${levels.map((l) => `<label class="row"><input type="checkbox" class="lvl" value="${esc(l)}" ${r && r.levels.includes(l) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}
+            ${levels.length ? '' : '<div class="muted">Levels appear once the bot has scanned this venue.</div>'}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div class="card">
+      <h2>Skip dates</h2>
+      ${dates.length ? `<p class="muted" style="margin:0 0 10px">Tap a date to stop alerts for it (e.g. you're already booked).</p>
+        <div class="chips">${dates.map((d) => `<span class="chip ${state.snooze.includes(d) ? 'on' : ''}" data-date="${esc(d)}">${esc(d)}</span>`).join('')}</div>`
+        : '<p class="muted" style="margin:0">Pick a venue to see its upcoming dates.</p>'}
+    </div>
+
+    <div class="card">
+      <h2>Get the pushes</h2>
+      <ol class="muted">
+        <li>Install the free <b>ntfy</b> app (App Store / Play Store).</li>
+        <li>Tap <b>+</b> and subscribe to your private topic below.</li>
+        <li>Hit <b>Send test</b>.</li>
+      </ol>
+      <div class="topic" style="margin-top:10px"><code id="topic">${esc(state.topic)}</code><button id="copy">Copy</button></div>
+      <div style="margin-top:10px; display:flex; gap:10px; align-items:center"><button id="test">Send test</button><span class="muted" id="testmsg"></span></div>
+      <p class="muted" style="margin:10px 0 0">Keep this page's link and your topic to yourself. Anyone with them can see or change your alerts.</p>
+    </div>`;
+
+  $('#name').oninput = (e) => { state.name = e.target.value; markDirty(); };
+  $('#paused').onchange = (e) => { state.paused = e.target.checked; markDirty(); };
+  document.querySelectorAll('.venue').forEach((el) => {
+    const key = el.dataset.venue;
+    $('.v', el).onchange = (e) => {
+      if (e.target.checked) state.rules.push({ venue: key, levels: [] });
+      else state.rules = state.rules.filter((r) => r.venue !== key);
+      markDirty(); render();
+    };
+    $('.any', el).onchange = (e) => {
+      const r = rule(key); if (!r) return;
+      if (e.target.checked) { r.levels = []; el.querySelectorAll('.lvl').forEach((c) => (c.checked = false)); }
+      else if (!r.levels.length) e.target.checked = true; // "any" stays on until a level is picked
+      markDirty();
+    };
+    el.querySelectorAll('.lvl').forEach((c) => (c.onchange = () => {
+      const r = rule(key); if (!r) return;
+      r.levels = [...el.querySelectorAll('.lvl:checked')].map((x) => x.value);
+      $('.any', el).checked = !r.levels.length;
+      markDirty();
+    }));
+  });
+  document.querySelectorAll('.chip').forEach((c) => (c.onclick = () => {
+    const d = c.dataset.date;
+    state.snooze = state.snooze.includes(d) ? state.snooze.filter((x) => x !== d) : [...state.snooze, d];
+    c.classList.toggle('on'); markDirty();
+  }));
+  $('#copy').onclick = async () => { try { await navigator.clipboard.writeText(state.topic); $('#copy').textContent = 'Copied'; } catch {} };
+  $('#test').onclick = async () => {
+    $('#testmsg').textContent = 'Sending…';
+    const r = await fetch(`/api/test?t=${encodeURIComponent(t)}`, { method: 'POST' });
+    $('#testmsg').textContent = r.ok ? 'Sent. Check your phone.' : 'Failed. Try again.';
+  };
+}
+
+$('#save').onclick = async () => {
+  state.name = $('#name').value; state.paused = $('#paused').checked;
+  setStatus('Saving…');
+  const r = await fetch(`/api/me?t=${encodeURIComponent(t)}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: state.name, paused: state.paused, rules: state.rules, snooze: state.snooze }),
+  });
+  if (r.ok) { state = (await r.json()).user; dirty = false; setStatus('Saved ✓'); render(); }
+  else setStatus('Save failed', true);
+};
+window.addEventListener('beforeunload', (e) => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+load();
+</script>
+</body>
+</html>

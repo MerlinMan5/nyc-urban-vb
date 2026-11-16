@@ -13,6 +13,8 @@
   <li><a href="#" onclick="show('w50');return false">W50th Street Campus / Fri.</a></li>
   <li><a href="#" onclick="show('beacon');return false">Beacon / Fri.</a></li>
   <li><a href="#" onclick="show('brandeis');return false">Brandeis / Fri.</a></li>
+  <li><a href="#" onclick="show('brandeisSun');return false">Brandeis / Sunday</a></li>
+  <li><a href="#" onclick="show('clinics');return false">Clinics</a></li>
 </ul>
 <form action="pay.html" method="get">
 <table id="sessions">
@@ -35,11 +37,14 @@ const DATA = {
         ["11/20","LaGuardia H.S.","Intermediate - Court 2","1"],
         ["12/04","LaGuardia H.S.","Intermediate - Court 1","Sold Out"],
         ["12/04","LaGuardia H.S.","Intermediate - Court 2","4"]],
-  w50: [],
+  w50: [["11/20","W50th St Campus","Intermediate - Court 1","Sold Out"]],
+  brandeisSun: [["11/22","Brandeis H.S.","Advanced","3"]],
+  clinics: [["11/22","Brandeis H.S.","Beginner Clinic","Sold Out"]],
   beacon: [["11/20","Beacon H.S.","Advanced - Court 1","5"],
            ["11/20","Beacon H.S.","Advanced Intermediate - Court 2","2"],
            ["11/20","Beacon H.S.","Advanced Intermediate - Court 3","Sold Out"]],
-  brandeis: [["11/20","Brandeis H.S.","Intermediate - Court 1","Yes"]],
+  brandeis: [["11/20","Brandeis H.S.","Intermediate - Court 1","Yes"],
+             ["12/04","Brandeis H.S.","Beginner/Small Ct.","5 Spaces"]],
 };
 function show(v) {
   const t = document.getElementById('sessions');
@@ -48,7 +53,7 @@ function show(v) {
     const r = t.insertRow();
     const sold = a === 'Sold Out';
     r.innerHTML = `<td><input type="checkbox" name="g[]" value="${v}${i}" ${sold?'disabled':''}></td>
-      <td>Fri ${d}</td><td>${g}</td><td>${l}</td><td>7:00 pm - 10:30 pm</td><td>18.00</td><td>${a}</td>`;
+      <td>${v==='brandeisSun'||v==='clinics'?'Sun':'Fri'} ${d}</td><td>${g}</td><td>${l}</td><td>7:00 pm - 10:30 pm</td><td>18.00</td><td>${a}</td>`;
   });
 }
 show('lga');

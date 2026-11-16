@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Alerts admin</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#1d1d1f; --mute:#6b6b70; --line:#e4e2dc; --accent:#1f6f5c; --accent-ink:#fff; --warn:#a2471b; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141414; --card:#1e1e1f; --ink:#ececec; --mute:#9a9aa0; --line:#2e2e30; --accent:#4fb39a; --accent-ink:#0d1f1a; --warn:#e08a5c; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:22px; margin:0 0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:12px; }
+  .name { font-weight:600; }
+  .muted { color:var(--mute); font-size:14px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; padding:8px 12px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
+  button.danger { color:var(--warn); }
+  input[type=text] { font:inherit; padding:9px 12px; border:1px solid var(--line); border-radius:10px; background:transparent; color:inherit; flex:1; }
+  form { display:flex; gap:8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Alerts admin</h1>
+  <div class="card">
+    <form id="add"><input type="text" id="newname" placeholder="Name" maxlength="40" required><button class="primary">Add person</button></form>
+    <p class="muted" style="margin:10px 0 0">Each person gets their own private link and ntfy topic. Send them the link.</p>
+  </div>
+  <div id="list"><p class="muted">Loading…</p></div>
+</main>
+<script>
+const k = new URLSearchParams(location.search).get('k');
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const api = (body) => fetch(`/api/admin?k=${encodeURIComponent(k)}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+const summary = (u) => u.paused ? 'Paused' : (u.rules.length ? u.rules.map((r) => r.venue + (r.levels.length ? ` (${r.levels.join(', ')})` : '')).join(' · ') : 'No venues picked yet') + (u.snooze.length ? ` · skipping ${u.snooze.join(', ')}` : '');
+
+async function load() {
+  const r = await api();
+  if (!r.ok) { document.getElementById('list').innerHTML = '<p class="muted">Not authorized.</p>'; document.getElementById('add').hidden = true; return; }
+  const { users } = await r.json();
+  document.getElementById('list').innerHTML = users.length ? users.map((u) => `
+    <div class="card">
+      <div class="name">${esc(u.name)}</div>
+      <div class="muted">${esc(summary(u))}</div>
+      <div class="actions">
+        <button data-copy="${esc(u.link)}">Copy link</button>
+        <button data-open="${esc(u.link)}">Open</button>
+        <button data-test="${esc(u.token)}">Send test</button>
+        <button class="danger" data-del="${esc(u.token)}" data-name="${esc(u.name)}">Remove</button>
+      </div>
+    </div>`).join('') : '<p class="muted">No one yet.</p>';
+  document.querySelectorAll('[data-copy]').forEach((b) => (b.onclick = async () => { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'Copied'; }));
+  document.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => window.open(b.dataset.open, '_blank')));
+  document.querySelectorAll('[data-test]').forEach((b) => (b.onclick = async () => { const r = await api({ action: 'test', token: b.dataset.test }); b.textContent = r.ok ? 'Sent' : 'Failed'; }));
+  document.querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => {
+    if (!confirm(`Remove ${b.dataset.name}? Their link stops working.`)) return;
+    await api({ action: 'delete', token: b.dataset.del }); load();
+  }));
+}
+document.getElementById('add').onsubmit = async (e) => {
+  e.preventDefault();
+  const name = document.getElementById('newname').value.trim(); if (!name) return;
+  await api({ action: 'create', name }); document.getElementById('newname').value = ''; load();
+};
+load();
+</script>
+</body>
+</html>

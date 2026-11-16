@@ -13,6 +13,10 @@ on:
         type: choice
         options: [alert, ping, probe, buy]
         default: alert
+      probe_checkout:
+        description: "probe mode: also dry-run the checkout (never pays)"
+        type: boolean
+        default: false
       probe_venue:
         description: "probe mode: venue tab to test with (needs an open session)"
         type: string
@@ -32,6 +36,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write   # lets the bot prove to the prefs app that it's this repo (no shared secret)
 
 concurrency:
   group: nyurban
@@ -63,6 +68,8 @@ jobs:
 
       - name: Run bot
         env:
+          NYU_PREFS_URL: ${{ vars.NYU_PREFS_URL }}
+          NYU_PROBE_CHECKOUT: ${{ inputs.probe_checkout && '1' || '0' }}
           NYU_MODE: ${{ github.ref_name == 'probe' && 'probe' || inputs.mode || vars.NYU_MODE || 'alert' }}
           NYU_PROBE_VENUE: ${{ inputs.probe_venue || 'Brandeis' }}
           # probe runs write nothing back to the repo

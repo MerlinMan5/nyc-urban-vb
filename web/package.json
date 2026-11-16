@@ -1,0 +1,10 @@
+{
+  "name": "nyurban-alerts",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "22.x" },
+  "dependencies": {
+    "@vercel/blob": "latest",
+    "jose": "^5.9.0"
+  }
+}
