@@ -21,6 +21,14 @@
   button.danger { color:var(--warn); }
   input[type=text], input[type=password] { font:inherit; padding:9px 12px; border:1px solid var(--line); border-radius:10px; background:transparent; color:inherit; flex:1; }
   form { display:flex; gap:8px; }
+  form input { min-width:0; } form button { white-space:nowrap; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; text-align:center; }
+  .stat b { display:block; font-size:22px; }
+  .stat span { color:var(--mute); font-size:12px; }
+  .meta { color:var(--mute); font-size:13px; margin-top:6px; }
+  .flag { color:var(--warn); }
+  .pop { font-size:14px; margin-top:12px; }
+  .pop div { margin:3px 0; }
 </style>
 </head>
 <body>
@@ -34,6 +42,7 @@
     <form id="add"><input type="text" id="newname" placeholder="Name" maxlength="40" required><button class="primary">Add person</button></form>
     <p class="muted" style="margin:10px 0 0">Each person gets their own private link and ntfy topic. Send them the link.</p>
   </div>
+  <div id="overview"></div>
   <div id="list"></div>
   <p style="margin-top:16px"><button id="signout" hidden>Sign out</button></p>
 </main>
@@ -50,9 +59,35 @@ function showLogin(msg) {
   document.getElementById('pw').focus();
 }
 document.getElementById('loginform').onsubmit = (e) => { e.preventDefault(); k = document.getElementById('pw').value.trim(); if (k) { store.set(k); load(); } };
-document.getElementById('signout').onclick = () => { store.clear(); k = null; showLogin('Signed out.'); };
+document.getElementById('signout').onclick = () => { store.clear(); k = null; document.getElementById('overview').innerHTML = ''; showLogin('Signed out.'); };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const api = (body) => fetch(`/api/admin?k=${encodeURIComponent(k)}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+const ago = (iso) => { if (!iso) return null; const m = (Date.now() - Date.parse(iso)) / 60000;
+  return m < 2 ? 'just now' : m < 60 ? `${Math.round(m)}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
+const day = (iso) => iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }) : '?';
+function overview(users) {
+  const opened = users.filter((u) => u.lastSeen).length, paused = users.filter((u) => u.paused).length;
+  const pushes = users.reduce((n, u) => n + u.alerts.pushes, 0);
+  const tally = (f) => { const m = {}; users.filter((u) => !u.paused && u.rules.length).forEach((u) => f(u).forEach((x) => (m[x] = (m[x] || 0) + 1))); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
+  const venues = tally((u) => u.rules.map((r) => r.venue));
+  const levels = tally((u) => [...new Set([...(u.levels.length ? u.levels : ['Any level']), ...u.rules.flatMap((r) => r.levels)])]);
+  return `<div class="card">
+    <div class="stats">
+      <div class="stat"><b>${users.length}</b><span>people</span></div>
+      <div class="stat"><b>${opened}</b><span>opened link</span></div>
+      <div class="stat"><b>${paused}</b><span>paused</span></div>
+      <div class="stat"><b>${pushes}</b><span>pushes sent</span></div>
+    </div>
+    ${venues.length ? `<div class="pop"><div><span class="muted">Venues:</span> ${venues.map(([k, n]) => `${esc(k)} ${n}`).join(' · ')}</div>
+      <div><span class="muted">Levels:</span> ${levels.map(([k, n]) => `${esc(k)} ${n}`).join(' · ')}</div></div>` : ''}
+  </div>`;
+}
+const meta = (u) => [
+  `Added ${day(u.created)}`,
+  u.lastSeen ? `opened ${ago(u.lastSeen)} (${u.visits}×)` : '<span class="flag">hasn\'t opened link</span>',
+  u.saves ? `saved ${u.saves}×` : null,
+  u.alerts.pushes ? `${u.alerts.pushes} pushes, last ${ago(u.alerts.last)}` : 'no pushes yet',
+].filter(Boolean).join(' · ');
 const summary = (u) => u.paused ? 'Paused' : ((u.levels || []).length ? `${u.levels.join(', ')} · ` : '') + (u.rules.length ? u.rules.map((r) => r.venue + (r.levels.length ? ` (${r.levels.join(', ')})` : '')).join(' · ') : 'No venues picked yet') + (u.snooze.length ? ` · skipping ${u.snooze.join(', ')}` : '');
 
 async function load() {
@@ -64,10 +99,12 @@ async function load() {
   document.getElementById('login').hidden = true; document.getElementById('addcard').hidden = false; document.getElementById('signout').hidden = false;
   document.getElementById('pw').value = '';
   const { users } = await r.json();
+  document.getElementById('overview').innerHTML = users.length ? overview(users) : '';
   document.getElementById('list').innerHTML = users.length ? users.map((u) => `
     <div class="card">
       <div class="name">${esc(u.name)}</div>
       <div class="muted">${esc(summary(u))}</div>
+      <div class="meta">${meta(u)}</div>
       <div class="actions">
         <button data-copy="${esc(u.link)}">Copy link</button>
         <button data-open="${esc(u.link)}">Open</button>

@@ -11,11 +11,17 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     const catalog = (await readJSON('catalog.json')) || { venues: {} };
+    if (!user.lastSeen || Date.now() - Date.parse(user.lastSeen) > 10 * 60 * 1000) {
+      user.lastSeen = new Date().toISOString();
+      user.visits = (user.visits || 0) + 1;
+      try { await writeJSON(path, user); } catch {}
+    }
     return res.json({ user: publicUser(user), catalog });
   }
   if (req.method === 'POST') {
     const prefs = cleanPrefs(req.body || {});
-    const updated = { ...user, ...prefs, updated: new Date().toISOString() };
+    const now = new Date().toISOString();
+    const updated = { ...user, ...prefs, updated: now, saves: (user.saves || 0) + 1, lastSeen: now };
     await writeJSON(path, updated);
     return res.json({ ok: true, user: publicUser(updated) });
   }

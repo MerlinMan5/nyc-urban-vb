@@ -871,6 +871,11 @@ def alert(page: Page, url: str) -> int:
     by_id = {u["id"]: u for u in users}
     for uid, lines in per_user.items():
         notify("\n".join(lines), by_id[uid]["topic"], who=uid)
+    if per_user and source == "prefs":
+        try:  # admin telemetry: how many alerts each person got
+            prefs_api("POST", {"sent": {uid: len(lines) for uid, lines in per_user.items()}})
+        except Exception as e:
+            log(f"alert stats publish failed ({type(e).__name__})")
     if not per_user:
         log("new openings, but nobody's preferences match" if any_new else "no new openings")
     return 0

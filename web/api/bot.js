@@ -1,7 +1,7 @@
 // Bot endpoints (GitHub Actions OIDC only):
 //   GET  /api/bot          -> everyone's alert preferences + topics
 //   POST /api/bot          -> store the catalog of venues/levels/dates the bot saw
-import { listUsers, writeJSON } from '../lib/store.js';
+import { listUsers, writeJSON, readJSON } from '../lib/store.js';
 import { verifyBot } from '../lib/auth.js';
 
 export default async function handler(req, res) {
@@ -19,6 +19,18 @@ export default async function handler(req, res) {
       snooze: u.snooze || [],
     }));
     return res.json({ users });
+  }
+  if (req.method === 'POST' && req.body?.sent && typeof req.body.sent === 'object') {
+    const stats = (await readJSON('stats.json')) || { alerts: {} };
+    const at = new Date().toISOString();
+    for (const [id, n] of Object.entries(req.body.sent).slice(0, 200)) {
+      if (!/^[A-Za-z0-9_-]{1,12}$/.test(id)) continue;
+      const s = stats.alerts[id] || { pushes: 0, openings: 0 };
+      s.pushes += 1; s.openings += Math.max(0, Math.min(1000, Number(n) || 0)); s.last = at;
+      stats.alerts[id] = s;
+    }
+    await writeJSON('stats.json', stats);
+    return res.json({ ok: true });
   }
   if (req.method === 'POST') {
     const venues = req.body?.venues;

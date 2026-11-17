@@ -1,14 +1,18 @@
 // Admin (?k=ADMIN_TOKEN): list people with their private links, add or remove people.
-import { listUsers, writeJSON, deletePath, userPath, newUser, validToken, cleanPrefs, ntfy } from '../lib/store.js';
+import { listUsers, readJSON, writeJSON, deletePath, userPath, newUser, validToken, cleanPrefs, ntfy } from '../lib/store.js';
 import { isAdmin } from '../lib/auth.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!isAdmin(req)) return res.status(401).json({ error: 'unauthorized' });
   const base = `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
+  let stats = { alerts: {} };
   const view = (u) => ({
     name: u.name, link: `${base}/?t=${u.token}`, token: u.token, topic: u.topic,
-    paused: !!u.paused, rules: u.rules || [], snooze: u.snooze || [],
+    paused: !!u.paused, levels: u.levels || [], rules: u.rules || [], snooze: u.snooze || [],
+    created: u.created || null, updated: u.updated || null, lastSeen: u.lastSeen || null,
+    visits: u.visits || 0, saves: u.saves || 0,
+    alerts: stats.alerts[u.token.slice(0, 6)] || { pushes: 0, openings: 0 },
   });
 
   if (req.method === 'GET' && req.query.action === 'create') {
@@ -21,6 +25,7 @@ export default async function handler(req, res) {
     return res.json({ ok: true, user: view(u) });
   }
   if (req.method === 'GET') {
+    stats = (await readJSON('stats.json')) || stats;
     const users = await listUsers();
     users.sort((a, b) => String(a.created).localeCompare(String(b.created)));
     return res.json({ users: users.map(view) });
