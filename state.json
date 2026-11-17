@@ -1,4 +1,5 @@
 {
+  "catalog_digest": "{\"Beacon\": {\"dates\": [\"11/20\", \"12/04\", \"12/11\", \"12/18\"], \"label\": \"Beacon \\u00b7 Fri\", \"levels\": [\"Advanced\", \"Advanced Intermediate\"]}, \"BrandeisFri\": {\"dates\": [\"11/20\", \"12/04\", \"12/11\", \"12/18\"], \"label\": \"Brandeis \\u00b7 Fri\", \"levels\": [\"Beg & Adv Beg\", \"Beginner/Small Ct.\", \"Intermediate\"]}, \"BrandeisSun\": {\"dates\": [\"11/22\", \"11/29\", \"12/06\", \"12/13\", \"12/20\"], \"label\": \"Brandeis \\u00b7 Sun\", \"levels\": [\"Beginner\", \"Intermediate\"]}, \"Clinics\": {\"dates\": [], \"label\": \"Sunday Clinics\", \"levels\": []}, \"LGA\": {\"dates\": [\"11/20\", \"12/04\", \"12/11\", \"12/18\"], \"label\": \"LaGuardia \\u00b7 Fri\", \"levels\": [\"Intermediate\"]}, \"W50\": {\"dates\": [], \"label\": \"W50th Street Campus \\u00b7 Fri\", \"levels\": []}}",
   "key_version": 3,
   "last_seen": {
     "Beacon 11/20 7:30pm Advanced C?": "sold_out",
