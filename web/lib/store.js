@@ -61,6 +61,7 @@ export function newUser(name, rules = []) {
     topic: `nyurban-${randomString(16)}`,
     name: cleanName(name),
     paused: false,
+    levels: [],
     rules,
     snooze: [],
     created: new Date().toISOString(),
@@ -82,7 +83,8 @@ export function cleanPrefs(body) {
   const snooze = Array.isArray(body?.snooze)
     ? body.snooze.map(String).filter((d) => /^\d{1,2}\/\d{1,2}$/.test(d)).slice(0, 60)
     : [];
-  return { name: cleanName(body?.name), paused: !!body?.paused, rules, snooze };
+  const levels = Array.isArray(body?.levels) ? body.levels.slice(0, 30).map((x) => String(x).slice(0, 80)) : [];
+  return { name: cleanName(body?.name), paused: !!body?.paused, levels, rules, snooze };
 }
 
 export function publicUser(u) {

@@ -21,9 +21,14 @@
   .venue { border-top:1px solid var(--line); padding:6px 0; }
   .venue:first-of-type { border-top:0; }
   .venue .name { font-weight:600; }
-  .levels { margin:0 0 6px 30px; display:none; }
-  .venue.on .levels { display:block; }
-  .levels label.row { padding:4px 0; font-size:15px; }
+  .venue .vlevels { margin:-4px 0 6px 30px; font-size:13px; color:var(--mute); }
+  .venue .vlevels b { color:var(--accent); font-weight:600; }
+  .venue.dim .name { color:var(--mute); }
+  .venue .custom { margin:0 0 8px 30px; }
+  .venue .custom .chips { margin-top:6px; }
+  .linkbtn { border:0; background:none; padding:0; color:var(--accent); font-size:13px; cursor:pointer; }
+  .chip.lvchip.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); text-decoration:none; }
+  .chip.small { padding:4px 10px; font-size:13px; }
   .chips { display:flex; flex-wrap:wrap; gap:8px; }
   .chip { border:1px solid var(--line); border-radius:999px; padding:6px 12px; font-size:14px; cursor:pointer; user-select:none; }
   .chip.on { background:var(--warn); border-color:var(--warn); color:#fff; text-decoration:line-through; }
@@ -68,9 +73,15 @@ async function load() {
 }
 
 function rule(venue) { return state.rules.find((r) => r.venue === venue); }
+function effLevels(venue) { const r = rule(venue); return r && r.levels.length ? r.levels : state.levels; }
+const LEVEL_ORDER = ['beginner', 'advanced beginner', 'intermediate', 'advanced intermediate', 'advanced'];
+const levelRank = (l) => { const i = LEVEL_ORDER.indexOf(l.toLowerCase()); return i < 0 ? 99 : i; };
+const open = new Set();
 
 function render() {
+  state.levels = state.levels || [];
   const venues = Object.entries(catalog);
+  const allLevels = [...new Set(venues.flatMap(([, v]) => v.levels || []))].sort((a, b) => levelRank(a) - levelRank(b) || a.localeCompare(b));
   const dates = [...new Set(venues.filter(([k]) => rule(k)).flatMap(([, v]) => v.dates || []))]
     .sort((a, b) => { const [am, ad] = a.split('/').map(Number), [bm, bd] = b.split('/').map(Number); return ((am + 6) % 12 - (bm + 6) % 12) || ad - bd; });
 
@@ -88,16 +99,36 @@ function render() {
     </div>
 
     <div class="card">
-      <h2>Venues &amp; levels</h2>
+      <h2>Levels</h2>
+      <p class="muted" style="margin:0 0 10px">Pick the levels you play. This applies to every venue below unless you customize one.</p>
+      <div class="chips">
+        <span class="chip lvchip ${!state.levels.length ? 'on' : ''}" data-glevel="">Any level</span>
+        ${allLevels.map((l) => `<span class="chip lvchip ${state.levels.includes(l) ? 'on' : ''}" data-glevel="${esc(l)}">${esc(l)}</span>`).join('')}
+      </div>
+      ${allLevels.length ? '' : '<p class="muted" style="margin:10px 0 0">Levels appear once the bot has scanned the venues.</p>'}
+    </div>
+
+    <div class="card">
+      <h2>Venues</h2>
       ${venues.map(([key, v]) => {
         const r = rule(key); const levels = v.levels || [];
-        return `<div class="venue ${r ? 'on' : ''}" data-venue="${esc(key)}">
+        const eff = effLevels(key);
+        const hits = eff.length ? levels.filter((l) => eff.includes(l)) : levels;
+        const none = eff.length && levels.length && !hits.length;
+        const custom = r && r.levels.length;
+        return `<div class="venue ${none ? 'dim' : ''}" data-venue="${esc(key)}">
           <label class="row"><input type="checkbox" class="v" ${r ? 'checked' : ''}><span class="name">${esc(v.label || key)}</span></label>
-          <div class="levels">
-            <label class="row"><input type="checkbox" class="any" ${!r || !r.levels.length ? 'checked' : ''}><span>Any level</span></label>
-            ${levels.map((l) => `<label class="row"><input type="checkbox" class="lvl" value="${esc(l)}" ${r && r.levels.includes(l) ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}
-            ${levels.length ? '' : '<div class="muted">Levels appear once the bot has scanned this venue.</div>'}
-          </div>
+          <div class="vlevels">${levels.length
+            ? (none ? 'None of your levels here · ' : '') + levels.map((l) => hits.includes(l) ? `<b>${esc(l)}</b>` : esc(l)).join(' · ')
+            : 'No sessions listed right now'}
+            ${r && levels.length ? ` · <button class="linkbtn cust">${custom ? 'Custom levels ✎' : 'Customize'}</button>` : ''}</div>
+          ${r && open.has(key) ? `<div class="custom">
+            <div class="muted">Levels for this venue only${custom ? '' : ' (using your levels above)'}:</div>
+            <div class="chips">
+              <span class="chip small lvchip ${!custom ? 'on' : ''}" data-vlevel="">Use my levels</span>
+              ${levels.map((l) => `<span class="chip small lvchip ${custom && r.levels.includes(l) ? 'on' : ''}" data-vlevel="${esc(l)}">${esc(l)}</span>`).join('')}
+            </div>
+          </div>` : ''}
         </div>`;
       }).join('')}
     </div>
@@ -123,27 +154,28 @@ function render() {
 
   $('#name').oninput = (e) => { state.name = e.target.value; markDirty(); };
   $('#paused').onchange = (e) => { state.paused = e.target.checked; markDirty(); };
+  document.querySelectorAll('[data-glevel]').forEach((c) => (c.onclick = () => {
+    const l = c.dataset.glevel;
+    if (!l) state.levels = [];
+    else state.levels = state.levels.includes(l) ? state.levels.filter((x) => x !== l) : [...state.levels, l];
+    markDirty(); render();
+  }));
   document.querySelectorAll('.venue').forEach((el) => {
     const key = el.dataset.venue;
     $('.v', el).onchange = (e) => {
       if (e.target.checked) state.rules.push({ venue: key, levels: [] });
-      else state.rules = state.rules.filter((r) => r.venue !== key);
+      else { state.rules = state.rules.filter((r) => r.venue !== key); open.delete(key); }
       markDirty(); render();
     };
-    $('.any', el).onchange = (e) => {
-      const r = rule(key); if (!r) return;
-      if (e.target.checked) { r.levels = []; el.querySelectorAll('.lvl').forEach((c) => (c.checked = false)); }
-      else if (!r.levels.length) e.target.checked = true; // "any" stays on until a level is picked
-      markDirty();
-    };
-    el.querySelectorAll('.lvl').forEach((c) => (c.onchange = () => {
-      const r = rule(key); if (!r) return;
-      r.levels = [...el.querySelectorAll('.lvl:checked')].map((x) => x.value);
-      $('.any', el).checked = !r.levels.length;
-      markDirty();
+    const cb = $('.cust', el); if (cb) cb.onclick = () => { open.has(key) ? open.delete(key) : open.add(key); render(); };
+    el.querySelectorAll('[data-vlevel]').forEach((c) => (c.onclick = () => {
+      const r = rule(key); if (!r) return; const l = c.dataset.vlevel;
+      if (!l) r.levels = [];
+      else r.levels = r.levels.includes(l) ? r.levels.filter((x) => x !== l) : [...r.levels, l];
+      markDirty(); render();
     }));
   });
-  document.querySelectorAll('.chip').forEach((c) => (c.onclick = () => {
+  document.querySelectorAll('[data-date]').forEach((c) => (c.onclick = () => {
     const d = c.dataset.date;
     state.snooze = state.snooze.includes(d) ? state.snooze.filter((x) => x !== d) : [...state.snooze, d];
     c.classList.toggle('on'); markDirty();
@@ -161,7 +193,7 @@ $('#save').onclick = async () => {
   setStatus('Saving…');
   const r = await fetch(`/api/me?t=${encodeURIComponent(t)}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: state.name, paused: state.paused, rules: state.rules, snooze: state.snooze }),
+    body: JSON.stringify({ name: state.name, paused: state.paused, levels: state.levels, rules: state.rules, snooze: state.snooze }),
   });
   if (r.ok) { state = (await r.json()).user; dirty = false; setStatus('Saved ✓'); render(); }
   else setStatus('Save failed', true);

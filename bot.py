@@ -278,7 +278,9 @@ def user_matches(u: dict, venue: str, row: dict) -> bool:
     for rule in u.get("rules", []):
         if rule.get("venue") != venue:
             continue
-        levels = [l.strip().lower() for l in rule.get("levels", [])]
+        # A venue's own level list overrides the person's global level filter;
+        # an empty list at both levels means any level.
+        levels = [l.strip().lower() for l in (rule.get("levels") or u.get("levels") or [])]
         if not levels or row["level"].strip().lower() in levels:
             return True
     return False

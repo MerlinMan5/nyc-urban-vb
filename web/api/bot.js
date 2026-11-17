@@ -14,6 +14,7 @@ export default async function handler(req, res) {
       name: u.name,
       topic: u.topic,
       paused: !!u.paused,
+      levels: u.levels || [],
       rules: u.rules || [],
       snooze: u.snooze || [],
     }));

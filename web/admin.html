@@ -53,7 +53,7 @@ document.getElementById('loginform').onsubmit = (e) => { e.preventDefault(); k =
 document.getElementById('signout').onclick = () => { store.clear(); k = null; showLogin('Signed out.'); };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const api = (body) => fetch(`/api/admin?k=${encodeURIComponent(k)}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
-const summary = (u) => u.paused ? 'Paused' : (u.rules.length ? u.rules.map((r) => r.venue + (r.levels.length ? ` (${r.levels.join(', ')})` : '')).join(' · ') : 'No venues picked yet') + (u.snooze.length ? ` · skipping ${u.snooze.join(', ')}` : '');
+const summary = (u) => u.paused ? 'Paused' : ((u.levels || []).length ? `${u.levels.join(', ')} · ` : '') + (u.rules.length ? u.rules.map((r) => r.venue + (r.levels.length ? ` (${r.levels.join(', ')})` : '')).join(' · ') : 'No venues picked yet') + (u.snooze.length ? ` · skipping ${u.snooze.join(', ')}` : '');
 
 async function load() {
   if (!k) return showLogin();
