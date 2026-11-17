@@ -58,7 +58,7 @@ export function randomString(n, alphabet = 'abcdefghijkmnpqrstuvwxyz23456789') {
 export function newUser(name, rules = []) {
   return {
     token: randomString(28, 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'),
-    topic: `nyurban-${randomString(16)}`,
+    topic: topicFor(name),
     name: cleanName(name),
     paused: false,
     levels: [],
@@ -66,6 +66,12 @@ export function newUser(name, rules = []) {
     snooze: [],
     created: new Date().toISOString(),
   };
+}
+
+// ntfy topics allow [A-Za-z0-9_-], max 64 chars. The random tail keeps it unguessable.
+export function topicFor(name) {
+  const slug = cleanName(name).toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 20) || 'player';
+  return `my-urban-vb-notifs-${slug}-${randomString(10)}`;
 }
 
 export function cleanName(n) {
