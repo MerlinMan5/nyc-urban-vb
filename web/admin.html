@@ -19,28 +19,50 @@
   button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:10px; padding:8px 12px; cursor:pointer; }
   button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
   button.danger { color:var(--warn); }
-  input[type=text] { font:inherit; padding:9px 12px; border:1px solid var(--line); border-radius:10px; background:transparent; color:inherit; flex:1; }
+  input[type=text], input[type=password] { font:inherit; padding:9px 12px; border:1px solid var(--line); border-radius:10px; background:transparent; color:inherit; flex:1; }
   form { display:flex; gap:8px; }
 </style>
 </head>
 <body>
 <main>
   <h1>Alerts admin</h1>
-  <div class="card">
+  <div class="card" id="login" hidden>
+    <form id="loginform"><input type="password" id="pw" placeholder="Admin password" autocomplete="current-password" required><button class="primary">Sign in</button></form>
+    <p class="muted" id="loginmsg" style="margin:10px 0 0">Enter the ADMIN_TOKEN you set in Vercel.</p>
+  </div>
+  <div class="card" id="addcard" hidden>
     <form id="add"><input type="text" id="newname" placeholder="Name" maxlength="40" required><button class="primary">Add person</button></form>
     <p class="muted" style="margin:10px 0 0">Each person gets their own private link and ntfy topic. Send them the link.</p>
   </div>
-  <div id="list"><p class="muted">Loading…</p></div>
+  <div id="list"></div>
+  <p style="margin-top:16px"><button id="signout" hidden>Sign out</button></p>
 </main>
 <script>
-const k = new URLSearchParams(location.search).get('k');
+const store = { get: () => { try { return localStorage.getItem('nyu_admin'); } catch { return null; } },
+  set: (v) => { try { localStorage.setItem('nyu_admin', v); } catch {} }, clear: () => { try { localStorage.removeItem('nyu_admin'); } catch {} } };
+const qk = new URLSearchParams(location.search).get('k');
+if (qk) { store.set(qk); history.replaceState(null, '', location.pathname); }
+let k = qk || store.get();
+function showLogin(msg) {
+  document.getElementById('login').hidden = false; document.getElementById('addcard').hidden = true;
+  document.getElementById('signout').hidden = true; document.getElementById('list').innerHTML = '';
+  if (msg) document.getElementById('loginmsg').textContent = msg;
+  document.getElementById('pw').focus();
+}
+document.getElementById('loginform').onsubmit = (e) => { e.preventDefault(); k = document.getElementById('pw').value.trim(); if (k) { store.set(k); load(); } };
+document.getElementById('signout').onclick = () => { store.clear(); k = null; showLogin('Signed out.'); };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const api = (body) => fetch(`/api/admin?k=${encodeURIComponent(k)}`, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
 const summary = (u) => u.paused ? 'Paused' : (u.rules.length ? u.rules.map((r) => r.venue + (r.levels.length ? ` (${r.levels.join(', ')})` : '')).join(' · ') : 'No venues picked yet') + (u.snooze.length ? ` · skipping ${u.snooze.join(', ')}` : '');
 
 async function load() {
+  if (!k) return showLogin();
+  document.getElementById('list').innerHTML = '<p class="muted">Loading…</p>';
   const r = await api();
-  if (!r.ok) { document.getElementById('list').innerHTML = '<p class="muted">Not authorized.</p>'; document.getElementById('add').hidden = true; return; }
+  if (r.status === 401 || r.status === 403) { store.clear(); k = null; return showLogin('Wrong password. Try again.'); }
+  if (!r.ok) { document.getElementById('list').innerHTML = '<p class="muted">Something went wrong (' + r.status + ').</p>'; return; }
+  document.getElementById('login').hidden = true; document.getElementById('addcard').hidden = false; document.getElementById('signout').hidden = false;
+  document.getElementById('pw').value = '';
   const { users } = await r.json();
   document.getElementById('list').innerHTML = users.length ? users.map((u) => `
     <div class="card">

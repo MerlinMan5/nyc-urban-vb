@@ -57,7 +57,7 @@ function setStatus(msg, err) { const s = $('#status'); s.textContent = msg; s.cl
 function markDirty() { dirty = true; setStatus('Unsaved changes'); }
 
 async function load() {
-  if (!t) { $('#app').innerHTML = '<h1>Volleyball alerts</h1><p class="sub">Open the private link you were sent.</p>'; return; }
+  if (!t) { $('#app').innerHTML = '<h1>Volleyball alerts</h1><p class="sub">Open the private link you were sent.</p><p><a href="/admin.html"><button>Admin</button></a></p>'; return; }
   const r = await fetch(`/api/me?t=${encodeURIComponent(t)}`);
   if (!r.ok) { $('#app').innerHTML = '<h1>Link not found</h1><p class="sub">Ask Jonathan for a new link.</p>'; return; }
   const data = await r.json();
