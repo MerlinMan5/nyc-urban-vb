@@ -68,7 +68,7 @@ jobs:
 
       - name: Run bot
         env:
-          NYU_PREFS_URL: ${{ vars.NYU_PREFS_URL }}
+          NYU_PREFS_URL: ${{ vars.NYU_PREFS_URL || 'https://nyc-urban-vb-web-sage.vercel.app' }}
           NYU_PROBE_CHECKOUT: ${{ inputs.probe_checkout && '1' || '0' }}
           NYU_MODE: ${{ github.ref_name == 'probe' && 'probe' || inputs.mode || vars.NYU_MODE || 'alert' }}
           NYU_PROBE_VENUE: ${{ inputs.probe_venue || 'Brandeis' }}
