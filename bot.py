@@ -13,8 +13,11 @@ It buys ONE ticket; alert mode is the default.
 
 Never prints personal info, so public Actions logs are safe.
 
+Alerts go only to each person's own ntfy topic from the prefs app (NYU_PREFS_URL).
+There is no shared/fallback topic: if prefs can't be loaded, that run sends nothing.
+
 Env:
-  NYU_NTFY_TOPIC     phone push via ntfy.sh (secret)
+  NYU_PREFS_URL      prefs app base URL
   NYU_TARGETS        "any" (default) | "today" | "11/20 12/04"
   NYU_LGA_URL        LaGuardia page (default below)
   NYU_BEACON_URL     Beacon page; Beacon is skipped until this is set
@@ -64,10 +67,10 @@ def env(name: str, default: str = "") -> str:
     return (os.environ.get(name) or default).strip()
 
 
-def notify(msg: str, topic: str | None = None, who: str = "legacy") -> None:
+def notify(msg: str, topic: str, who: str) -> None:
+    """Push to one person's own topic. Never sends an empty message."""
     log(f"NOTIFY[{who}]: " + msg.replace("\n", " / "))
-    topic = topic if topic is not None else env("NYU_NTFY_TOPIC")
-    if not topic or env("NYU_NOTIFY_DRY") == "1":
+    if not topic or not msg.strip() or env("NYU_NOTIFY_DRY") == "1":
         return
     try:
         req = urllib.request.Request(
@@ -167,9 +170,6 @@ VENUES = [
 ]
 VENUE_LABEL = {v["key"]: v["label"] for v in VENUES}
 
-# Before per-person prefs existed: LaGuardia (any level) + Beacon Advanced Intermediate -> NYU_NTFY_TOPIC
-LEGACY_RULES = [{"venue": "LGA", "levels": []}, {"venue": "Beacon", "levels": ["Advanced Intermediate"]}]
-
 
 def select_tab_exact(page: Page, text: str) -> bool:
     want = " ".join(text.split()).lower()
@@ -260,10 +260,8 @@ def load_users() -> tuple[list[dict], str]:
         if data is not None:
             return data.get("users", []), "prefs"
     except Exception as e:
-        log(f"prefs fetch failed ({type(e).__name__}: {str(e)[:80]}); using legacy topic")
-    topic = env("NYU_NTFY_TOPIC")
-    legacy = [{"id": "legacy", "name": "legacy", "topic": topic, "paused": False, "rules": LEGACY_RULES, "snooze": []}] if topic else []
-    return legacy, "legacy"
+        log(f"prefs fetch failed ({type(e).__name__}: {str(e)[:80]}); no alerts this run")
+    return [], "none"
 
 
 def norm_date(d: str) -> str:
@@ -641,7 +639,7 @@ def buy(page: Page, w: dict, target: dict, state: dict) -> int:
             raise RuntimeError("Pay button not found")
         if dry:
             sighting(venue, target["date"], target["court"], target["status"], "dry_run_ok")
-            notify(f"Dry run OK: {venue} {target['date']} C{target['court']} reached Pay")
+            log(f"Dry run OK: {venue} {target['date']} C{target['court']} reached Pay")
             return 0
 
         set_purchase(state, date_iso, "pending", venue=venue, court=target["court"])
@@ -657,7 +655,7 @@ def buy(page: Page, w: dict, target: dict, state: dict) -> int:
         result = "failed" if DECLINE_RX.search(body) else "purchased" if SUCCESS_RX.search(body) else "unknown"
         set_purchase(state, date_iso, result, venue=venue, court=target["court"])
         sighting(venue, target["date"], target["court"], target["status"], result)
-        notify({"purchased": f"Booked {venue} {target['date']} Court {target['court']}",
+        log({"purchased": f"Booked {venue} {target['date']} Court {target['court']}",
                 "failed": f"Card declined for {target['date']}. Remove it from state.json to retry.",
                 "unknown": f"Paid for {target['date']} but couldn't confirm. Check email; retries blocked."}[result])
         return 0 if result == "purchased" else 1
@@ -665,7 +663,7 @@ def buy(page: Page, w: dict, target: dict, state: dict) -> int:
         msg = str(e).split("\n")[0][:120]
         shot(page, "error")
         sighting(venue, target["date"], target["court"], target["status"], f"error: {msg}")
-        notify(f"Bot error booking {venue} {target['date']}: {msg}")
+        log(f"Bot error booking {venue} {target['date']}: {msg}")
         return 1
 
 
@@ -802,11 +800,8 @@ def run(args) -> int:
     log(f"start  mode={mode}")
 
     if mode == "ping":
-        if not env("NYU_NTFY_TOPIC"):
-            log("ping: NYU_NTFY_TOPIC is not set")
-            return 1
-        notify("NY Urban bot is connected ✅ You'll get alerts here when courts open.")
-        return 0
+        log("ping mode was removed; use Send test in the prefs app admin page")
+        return 1
     if mode == "buy":
         log("buy mode was retired; the bot is alert-only")
         return 1

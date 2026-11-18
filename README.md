@@ -24,7 +24,7 @@ Every status change is appended to `sightings.csv` (venue, session, court, statu
 
 ## Setup
 
-1. Install the **ntfy** app, subscribe to a random topic name, and add it as Secret `NYU_NTFY_TOPIC`.
+1. Alerts go only to each person's own ntfy topic, set up from the prefs app (Vercel). There is no shared topic; add people from the admin page and send them their link.
 
 Venues are tabs on the same signup page, so the bot clicks "Laguardia" and "Beacon" and keeps only rows whose Gym column matches.
 

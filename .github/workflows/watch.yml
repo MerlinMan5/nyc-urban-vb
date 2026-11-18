@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "alert = observe & notify | ping = send a test notification | probe = live dry run of checkout (never pays) | buy = single ticket"
+        description: "alert = observe & notify | probe = live dry run of checkout (never pays) | buy = single ticket"
         type: choice
-        options: [alert, ping, probe, buy]
+        options: [alert, probe, buy]
         default: alert
       probe_checkout:
         description: "probe mode: also dry-run the checkout (never pays)"
@@ -79,7 +79,6 @@ jobs:
           NYU_TARGETS: ${{ inputs.targets || vars.NYU_TARGETS || 'any' }}
           NYU_LGA_URL: ${{ vars.NYU_LGA_URL }}
           NYU_BEACON_URL: ${{ vars.NYU_BEACON_URL }}
-          NYU_NTFY_TOPIC: ${{ secrets.NYU_NTFY_TOPIC }}
           NYU_FIRST: ${{ secrets.NYU_FIRST }}
           NYU_LAST: ${{ secrets.NYU_LAST }}
           NYU_EMAIL: ${{ secrets.NYU_EMAIL }}
