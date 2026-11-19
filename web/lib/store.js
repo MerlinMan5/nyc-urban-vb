@@ -64,6 +64,7 @@ export function newUser(name, rules = []) {
     levels: [],
     rules,
     snooze: [],
+    maxFreq: 0,
     created: new Date().toISOString(),
   };
 }
@@ -90,7 +91,14 @@ export function cleanPrefs(body) {
     ? body.snooze.map(String).filter((d) => /^\d{1,2}\/\d{1,2}$/.test(d)).slice(0, 60)
     : [];
   const levels = Array.isArray(body?.levels) ? body.levels.slice(0, 30).map((x) => String(x).slice(0, 80)) : [];
-  return { name: cleanName(body?.name), paused: !!body?.paused, levels, rules, snooze };
+  return { name: cleanName(body?.name), paused: !!body?.paused, levels, rules, snooze, maxFreq: cleanFreq(body?.maxFreq) };
+}
+
+// Max one push per N minutes; openings in between are batched into the next push.
+export const FREQ_CHOICES = [0, 10, 30, 60];
+export function cleanFreq(v) {
+  const n = Number(v);
+  return FREQ_CHOICES.includes(n) ? n : 0;
 }
 
 export function publicUser(u) {

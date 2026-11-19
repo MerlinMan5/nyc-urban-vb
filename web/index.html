@@ -77,6 +77,7 @@ function effLevels(venue) { const r = rule(venue); return r && r.levels.length ?
 const LEVEL_ORDER = ['beginner', 'advanced beginner', 'intermediate', 'advanced intermediate', 'advanced'];
 const levelRank = (l) => { const i = LEVEL_ORDER.indexOf(l.toLowerCase()); return i < 0 ? 99 : i; };
 const open = new Set();
+const FREQS = [[0, 'Every opening'], [10, '10 min'], [30, '30 min'], [60, '1 hour']];
 
 function render() {
   state.levels = state.levels || [];
@@ -134,6 +135,12 @@ function render() {
     </div>
 
     <div class="card">
+      <h2>How often</h2>
+      <p class="muted" style="margin:0 0 10px">At most one push per window. Anything that opens in between gets bundled into the next push. Spots that fill up again before then are dropped.</p>
+      <div class="chips">${FREQS.map(([m, label]) => `<span class="chip lvchip ${(state.maxFreq || 0) === m ? 'on' : ''}" data-freq="${m}">${label}</span>`).join('')}</div>
+    </div>
+
+    <div class="card">
       <h2>Skip dates</h2>
       ${dates.length ? `<p class="muted" style="margin:0 0 10px">Tap a date to stop alerts for it (e.g. you're already booked).</p>
         <div class="chips">${dates.map((d) => `<span class="chip ${state.snooze.includes(d) ? 'on' : ''}" data-date="${esc(d)}">${esc(d)}</span>`).join('')}</div>`
@@ -175,6 +182,7 @@ function render() {
       markDirty(); render();
     }));
   });
+  document.querySelectorAll('[data-freq]').forEach((c) => (c.onclick = () => { state.maxFreq = Number(c.dataset.freq); markDirty(); render(); }));
   document.querySelectorAll('[data-date]').forEach((c) => (c.onclick = () => {
     const d = c.dataset.date;
     state.snooze = state.snooze.includes(d) ? state.snooze.filter((x) => x !== d) : [...state.snooze, d];
@@ -193,7 +201,7 @@ $('#save').onclick = async () => {
   setStatus('Saving…');
   const r = await fetch(`/api/me?t=${encodeURIComponent(t)}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: state.name, paused: state.paused, levels: state.levels, rules: state.rules, snooze: state.snooze }),
+    body: JSON.stringify({ name: state.name, paused: state.paused, levels: state.levels, rules: state.rules, snooze: state.snooze, maxFreq: state.maxFreq || 0 }),
   });
   if (r.ok) { state = (await r.json()).user; dirty = false; setStatus('Saved ✓'); render(); }
   else setStatus('Save failed', true);

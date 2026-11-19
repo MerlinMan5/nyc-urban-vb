@@ -17,6 +17,7 @@ export default async function handler(req, res) {
       levels: u.levels || [],
       rules: u.rules || [],
       snooze: u.snooze || [],
+      maxFreq: u.maxFreq || 0,
     }));
     return res.json({ users });
   }

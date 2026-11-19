@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   let stats = { alerts: {} };
   const view = (u) => ({
     name: u.name, link: `${base}/?t=${u.token}`, token: u.token, topic: u.topic,
-    paused: !!u.paused, levels: u.levels || [], rules: u.rules || [], snooze: u.snooze || [],
+    paused: !!u.paused, levels: u.levels || [], rules: u.rules || [], snooze: u.snooze || [], maxFreq: u.maxFreq || 0,
     created: u.created || null, updated: u.updated || null, lastSeen: u.lastSeen || null,
     visits: u.visits || 0, saves: u.saves || 0,
     alerts: stats.alerts[u.token.slice(0, 6)] || { pushes: 0, openings: 0 },

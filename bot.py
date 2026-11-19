@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import re
@@ -827,7 +828,8 @@ def alert(page: Page, url: str) -> int:
 
     scans = scan_all(page, url)
     new_seen: dict = {}
-    per_user: dict[str, list[str]] = {}
+    per_user: dict[str, dict[str, str]] = {}  # uid -> {row_key: line}, new this run
+    rows_now: dict[str, tuple[str, dict]] = {}  # row_key -> (venue, row) for rows scanned this run
     any_new = False
 
     for venue, rows in scans.items():
@@ -839,6 +841,7 @@ def alert(page: Page, url: str) -> int:
             key = row_key(venue, r)
             old = state["last_seen"].get(key)
             new_seen[key] = r["status"]
+            rows_now[key] = (venue, r)
             if old != r["status"]:
                 sighting(venue, r["date"], f"{r['level']} C{r['court']}".strip(), r["status"],
                          "baseline" if old is None else "changed")
@@ -847,7 +850,7 @@ def alert(page: Page, url: str) -> int:
                 line = alert_line(venue, r)
                 for u in users:
                     if user_matches(u, venue, r):
-                        per_user.setdefault(u["id"], []).append(line)
+                        per_user.setdefault(u["id"], {})[key] = line
 
     state["last_seen"] = new_seen
     if all(v is not None for v in scans.values()):
@@ -863,17 +866,71 @@ def alert(page: Page, url: str) -> int:
             log(f"catalog publish failed ({type(e).__name__})")
     save_state(state)
 
-    by_id = {u["id"]: u for u in users}
-    for uid, lines in per_user.items():
-        notify("\n".join(lines), by_id[uid]["topic"], who=uid)
-    if per_user and source == "prefs":
+    sent = flush(state, users, per_user, new_seen, rows_now, prune=(source == "prefs"))
+    save_state(state)
+    if sent and source == "prefs":
         try:  # admin telemetry: how many alerts each person got
-            prefs_api("POST", {"sent": {uid: len(lines) for uid, lines in per_user.items()}})
+            prefs_api("POST", {"sent": sent})
         except Exception as e:
             log(f"alert stats publish failed ({type(e).__name__})")
     if not per_user:
         log("new openings, but nobody's preferences match" if any_new else "no new openings")
     return 0
+
+
+FREQ_SLACK_MIN = 2  # cron fires every ~5 min with jitter; don't make a 10-min window wait 15
+
+
+def throttle_id(uid: str) -> str:
+    """state.json is in a public repo, so key it by a hash, not the token prefix."""
+    return hashlib.sha256(uid.encode()).hexdigest()[:12]
+
+
+def flush(state: dict, users: list[dict], per_user: dict, seen: dict, rows_now: dict, prune: bool) -> dict:
+    """Queue each person's new lines and send if their max-frequency window has passed.
+
+    Queued lines are refreshed to the latest count at send time, and dropped if the
+    spot filled back up or no longer matches their prefs (paused, snoozed, etc).
+    Returns {uid: lines_sent}.
+    """
+    throttle = state.setdefault("throttle", {})
+    t_now = now()
+    sent: dict[str, int] = {}
+    for u in users:
+        h = throttle_id(u["id"])
+        t = throttle.get(h) or {}
+        pending = {**t.get("pending", {}), **per_user.get(u["id"], {})}
+        keep = {}
+        for k, line in pending.items():
+            if not seen.get(k, "").startswith("open"):
+                continue
+            if k in rows_now:
+                venue, r = rows_now[k]
+                if not user_matches(u, venue, r):
+                    continue
+                line = alert_line(venue, r)
+            keep[k] = line
+        freq = int(u.get("maxFreq") or 0)
+        last = datetime.fromisoformat(t["last"]) if t.get("last") else None
+        due = not freq or last is None or (t_now - last).total_seconds() >= (freq - FREQ_SLACK_MIN) * 60
+        if keep and due:
+            notify("\n".join(keep.values()), u["topic"], who=u["id"])
+            sent[u["id"]] = len(keep)
+            t = {"last": t_now.isoformat(timespec="seconds"), "pending": {}}
+        else:
+            if keep:
+                log(f"held {len(keep)} line(s) for {u['id']} (max 1 push / {freq} min)")
+            t = {**t, "pending": keep}
+        if t.get("last") or t["pending"]:
+            throttle[h] = t
+        else:
+            throttle.pop(h, None)
+    if prune:  # forget people who were removed from the prefs app
+        live = {throttle_id(u["id"]) for u in users}
+        for h in list(throttle):
+            if h not in live:
+                del throttle[h]
+    return sent
 
 
 def main() -> None:
