@@ -64,6 +64,8 @@ export function newUser(name, rules = []) {
     levels: [],
     rules,
     snooze: [],
+    maxFreq: 0,
+    quiet: { ...QUIET_DEFAULT },
     created: new Date().toISOString(),
   };
 }
@@ -87,15 +89,49 @@ export function cleanPrefs(body) {
       })).filter((r) => r.venue)
     : [];
   const snooze = Array.isArray(body?.snooze)
-    ? body.snooze.map(String).filter((d) => /^\d{1,2}\/\d{1,2}$/.test(d)).slice(0, 60)
+    ? pruneSnooze(body.snooze.map(String).filter((d) => /^\d{1,2}\/\d{1,2}$/.test(d))).slice(0, 60)
     : [];
   const levels = Array.isArray(body?.levels) ? body.levels.slice(0, 30).map((x) => String(x).slice(0, 80)) : [];
-  return { name: cleanName(body?.name), paused: !!body?.paused, levels, rules, snooze };
+  return { name: cleanName(body?.name), paused: !!body?.paused, levels, rules, snooze, maxFreq: cleanFreq(body?.maxFreq), quiet: cleanQuiet(body?.quiet) };
+}
+
+// Max one push per N minutes; openings in between are batched into the next push.
+// 0 = every opening; otherwise 10..240 min in 5-min steps (the bot runs every 5 min,
+// so 5 would behave the same as 0).
+export function cleanFreq(v) {
+  const n = Math.round(Number(v) / 5) * 5;
+  return Number.isFinite(n) && n >= 10 ? Math.min(n, 240) : 0;
+}
+
+// Quiet hours (ET, whole hours, end exclusive; may wrap midnight). On by default.
+export const QUIET_DEFAULT = { on: true, start: 0, end: 8 };
+export function cleanQuiet(q) {
+  if (!q || typeof q !== 'object') return { ...QUIET_DEFAULT };
+  const hr = (v, d) => { const n = Number(v); return Number.isInteger(n) && n >= 0 && n <= 23 ? n : d; };
+  return { on: !!q.on, start: hr(q.start, QUIET_DEFAULT.start), end: hr(q.end, QUIET_DEFAULT.end) };
+}
+export const userQuiet = (u) => (u.quiet ? cleanQuiet(u.quiet) : { ...QUIET_DEFAULT });
+
+// 'M/D' dates before today (ET) are dropped. Dates are year-less; anything more than
+// ~6 months back is read as next year (same rule the bot uses).
+export function todayET() {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'numeric', day: 'numeric' })
+    .formatToParts(new Date()).map((x) => [x.type, Number(x.value)]));
+  return p;
+}
+export function isPastDate(mmdd, t = todayET()) {
+  const [m, d] = mmdd.split('/').map(Number);
+  const year = t.year + (m < t.month - 6 ? 1 : 0);
+  return year * 10000 + m * 100 + d < t.year * 10000 + t.month * 100 + t.day;
+}
+export function pruneSnooze(list) {
+  const t = todayET();
+  return [...new Set(list)].filter((d) => !isPastDate(d, t));
 }
 
 export function publicUser(u) {
   const { token, ...rest } = u;
-  return rest;
+  return { ...rest, quiet: userQuiet(u), snooze: pruneSnooze(u.snooze || []) };
 }
 
 export async function ntfy(topic, message, title = 'NY Urban volleyball') {

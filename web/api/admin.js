@@ -1,5 +1,5 @@
 // Admin (?k=ADMIN_TOKEN): list people with their private links, add or remove people.
-import { listUsers, readJSON, writeJSON, deletePath, userPath, newUser, validToken, cleanPrefs, ntfy } from '../lib/store.js';
+import { listUsers, readJSON, writeJSON, deletePath, userPath, newUser, validToken, cleanPrefs, ntfy, userQuiet, pruneSnooze } from '../lib/store.js';
 import { isAdmin } from '../lib/auth.js';
 
 export default async function handler(req, res) {
@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   let stats = { alerts: {} };
   const view = (u) => ({
     name: u.name, link: `${base}/?t=${u.token}`, token: u.token, topic: u.topic,
-    paused: !!u.paused, levels: u.levels || [], rules: u.rules || [], snooze: u.snooze || [],
+    paused: !!u.paused, levels: u.levels || [], rules: u.rules || [], snooze: pruneSnooze(u.snooze || []), maxFreq: u.maxFreq || 0, quiet: userQuiet(u),
     created: u.created || null, updated: u.updated || null, lastSeen: u.lastSeen || null,
     visits: u.visits || 0, saves: u.saves || 0,
     alerts: stats.alerts[u.token.slice(0, 6)] || { pushes: 0, openings: 0 },

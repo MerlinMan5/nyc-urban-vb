@@ -12,11 +12,11 @@ SRV=$!; trap 'kill $SRV' EXIT; sleep 1
 
 cat > "$DATA/users.json" <<'JSON'
 [
-  {"id":"jon","name":"Jon","topic":"t","paused":false,"snooze":[],
+  {"quiet":{"on":false},"id":"jon","name":"Jon","topic":"t","paused":false,"snooze":[],
    "rules":[{"venue":"LGA","levels":[]},{"venue":"Beacon","levels":["Advanced Intermediate"]}]},
-  {"id":"sam","name":"Sam","topic":"t","paused":false,"snooze":["12/04"],
+  {"quiet":{"on":false},"id":"sam","name":"Sam","topic":"t","paused":false,"snooze":["12/04"],
    "rules":[{"venue":"BrandeisFri","levels":[]},{"venue":"BrandeisSun","levels":["Advanced"]}]},
-  {"id":"kai","name":"Kai","topic":"t","paused":true,"snooze":[],
+  {"quiet":{"on":false},"id":"kai","name":"Kai","topic":"t","paused":true,"snooze":[],
    "rules":[{"venue":"LGA","levels":[]}]}
 ]
 JSON

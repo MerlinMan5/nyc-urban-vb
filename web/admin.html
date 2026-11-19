@@ -88,7 +88,7 @@ const meta = (u) => [
   u.saves ? `saved ${u.saves}×` : null,
   u.alerts.pushes ? `${u.alerts.pushes} pushes, last ${ago(u.alerts.last)}` : 'no pushes yet',
 ].filter(Boolean).join(' · ');
-const summary = (u) => u.paused ? 'Paused' : ((u.levels || []).length ? `${u.levels.join(', ')} · ` : '') + (u.rules.length ? u.rules.map((r) => r.venue + (r.levels.length ? ` (${r.levels.join(', ')})` : '')).join(' · ') : 'No venues picked yet') + (u.snooze.length ? ` · skipping ${u.snooze.join(', ')}` : '');
+const summary = (u) => u.paused ? 'Paused' : ((u.levels || []).length ? `${u.levels.join(', ')} · ` : '') + (u.rules.length ? u.rules.map((r) => r.venue + (r.levels.length ? ` (${r.levels.join(', ')})` : '')).join(' · ') : 'No venues picked yet') + (u.snooze.length ? ` · skipping ${u.snooze.join(', ')}` : '') + (u.maxFreq ? ` · max 1 push / ${u.maxFreq}m` : '') + (u.quiet && u.quiet.on ? ` · quiet ${u.quiet.start}–${u.quiet.end}h` : ' · no quiet hours');
 
 async function load() {
   if (!k) return showLogin();
