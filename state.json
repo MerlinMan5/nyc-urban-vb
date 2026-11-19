@@ -61,5 +61,6 @@
     "LGA 12/18 7pm Intermediate C1": "sold_out",
     "LGA 12/18 7pm Intermediate C2": "sold_out"
   },
-  "purchases": {}
+  "purchases": {},
+  "throttle": {}
 }
