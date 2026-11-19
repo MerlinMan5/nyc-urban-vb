@@ -95,10 +95,11 @@ export function cleanPrefs(body) {
 }
 
 // Max one push per N minutes; openings in between are batched into the next push.
-export const FREQ_CHOICES = [0, 10, 30, 60];
+// 0 = every opening; otherwise 10..240 min in 5-min steps (the bot runs every 5 min,
+// so 5 would behave the same as 0).
 export function cleanFreq(v) {
-  const n = Number(v);
-  return FREQ_CHOICES.includes(n) ? n : 0;
+  const n = Math.round(Number(v) / 5) * 5;
+  return Number.isFinite(n) && n >= 10 ? Math.min(n, 240) : 0;
 }
 
 export function publicUser(u) {
