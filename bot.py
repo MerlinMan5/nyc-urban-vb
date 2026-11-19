@@ -68,7 +68,7 @@ def env(name: str, default: str = "") -> str:
     return (os.environ.get(name) or default).strip()
 
 
-def notify(msg: str, topic: str, who: str) -> None:
+def notify(msg: str, topic: str, who: str, click: str = "") -> None:
     """Push to one person's own topic. Never sends an empty message."""
     log(f"NOTIFY[{who}]: " + msg.replace("\n", " / "))
     if not topic or not msg.strip() or env("NYU_NOTIFY_DRY") == "1":
@@ -77,7 +77,7 @@ def notify(msg: str, topic: str, who: str) -> None:
         req = urllib.request.Request(
             f"https://ntfy.sh/{topic}", data=msg.encode(),
             headers={"Title": "NY Urban volleyball", "Priority": "high",
-                     "Tags": "volleyball"},
+                     "Tags": "volleyball", **({"Click": click} if click else {})},
         )
         urllib.request.urlopen(req, timeout=10)
     except Exception as e:  # never fail a run over a push
@@ -866,7 +866,7 @@ def alert(page: Page, url: str) -> int:
             log(f"catalog publish failed ({type(e).__name__})")
     save_state(state)
 
-    sent = flush(state, users, per_user, new_seen, rows_now, prune=(source == "prefs"))
+    sent = flush(state, users, per_user, new_seen, rows_now, prune=(source == "prefs"), click=url)
     save_state(state)
     if sent and source == "prefs":
         try:  # admin telemetry: how many alerts each person got
@@ -886,7 +886,22 @@ def throttle_id(uid: str) -> str:
     return hashlib.sha256(uid.encode()).hexdigest()[:12]
 
 
-def flush(state: dict, users: list[dict], per_user: dict, seen: dict, rows_now: dict, prune: bool) -> dict:
+QUIET_DEFAULT = {"on": True, "start": 0, "end": 8}
+
+
+def in_quiet(u: dict, t: datetime) -> bool:
+    """Quiet hours are whole ET hours, end exclusive, and may wrap midnight (22 -> 7)."""
+    q = u.get("quiet") or QUIET_DEFAULT
+    if not q.get("on"):
+        return False
+    start, end, h = int(q.get("start", 0)), int(q.get("end", 8)), t.hour
+    if start == end:
+        return False
+    return start <= h < end if start < end else (h >= start or h < end)
+
+
+def flush(state: dict, users: list[dict], per_user: dict, seen: dict, rows_now: dict, prune: bool,
+          click: str = "") -> dict:
     """Queue each person's new lines and send if their max-frequency window has passed.
 
     Queued lines are refreshed to the latest count at send time, and dropped if the
@@ -912,14 +927,16 @@ def flush(state: dict, users: list[dict], per_user: dict, seen: dict, rows_now: 
             keep[k] = line
         freq = int(u.get("maxFreq") or 0)
         last = datetime.fromisoformat(t["last"]) if t.get("last") else None
-        due = not freq or last is None or (t_now - last).total_seconds() >= (freq - FREQ_SLACK_MIN) * 60
+        quiet = in_quiet(u, t_now)
+        due = not quiet and (not freq or last is None or (t_now - last).total_seconds() >= (freq - FREQ_SLACK_MIN) * 60)
         if keep and due:
-            notify("\n".join(keep.values()), u["topic"], who=u["id"])
+            notify("\n".join(keep.values()), u["topic"], who=u["id"], click=click)
             sent[u["id"]] = len(keep)
             t = {"last": t_now.isoformat(timespec="seconds"), "pending": {}}
         else:
             if keep:
-                log(f"held {len(keep)} line(s) for {u['id']} (max 1 push / {freq} min)")
+                why = "quiet hours" if quiet else f"max 1 push / {freq} min"
+                log(f"held {len(keep)} line(s) for {u['id']} ({why})")
             t = {**t, "pending": keep}
         if t.get("last") or t["pending"]:
             throttle[h] = t

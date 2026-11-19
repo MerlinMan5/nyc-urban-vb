@@ -1,5 +1,5 @@
 // A person's own preferences, addressed by their private link token (?t=...).
-import { readJSON, writeJSON, userPath, validToken, cleanPrefs, publicUser } from '../lib/store.js';
+import { readJSON, writeJSON, userPath, validToken, cleanPrefs, publicUser, pruneSnooze } from '../lib/store.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -11,7 +11,10 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     const catalog = (await readJSON('catalog.json')) || { venues: {} };
-    if (!user.lastSeen || Date.now() - Date.parse(user.lastSeen) > 10 * 60 * 1000) {
+    const pruned = pruneSnooze(user.snooze || []);
+    const stale = pruned.length !== (user.snooze || []).length;
+    if (stale) user.snooze = pruned;
+    if (stale || !user.lastSeen || Date.now() - Date.parse(user.lastSeen) > 10 * 60 * 1000) {
       user.lastSeen = new Date().toISOString();
       user.visits = (user.visits || 0) + 1;
       try { await writeJSON(path, user); } catch {}

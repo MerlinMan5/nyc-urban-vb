@@ -1,7 +1,7 @@
 // Bot endpoints (GitHub Actions OIDC only):
 //   GET  /api/bot          -> everyone's alert preferences + topics
 //   POST /api/bot          -> store the catalog of venues/levels/dates the bot saw
-import { listUsers, writeJSON, readJSON } from '../lib/store.js';
+import { listUsers, writeJSON, readJSON, userQuiet, pruneSnooze } from '../lib/store.js';
 import { verifyBot } from '../lib/auth.js';
 
 export default async function handler(req, res) {
@@ -16,8 +16,9 @@ export default async function handler(req, res) {
       paused: !!u.paused,
       levels: u.levels || [],
       rules: u.rules || [],
-      snooze: u.snooze || [],
+      snooze: pruneSnooze(u.snooze || []),
       maxFreq: u.maxFreq || 0,
+      quiet: userQuiet(u),
     }));
     return res.json({ users });
   }
