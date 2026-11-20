@@ -3,7 +3,7 @@
   "key_version": 3,
   "last_seen": {
     "Beacon 11/20 7:30pm Advanced C?": "sold_out",
-    "Beacon 11/20 7:30pm Advanced Intermediate C?": "sold_out",
+    "Beacon 11/20 7:30pm Advanced Intermediate C?": "open:1",
     "Beacon 12/04 7:30pm Advanced C?": "sold_out",
     "Beacon 12/04 7:30pm Advanced Intermediate C?": "sold_out",
     "Beacon 12/11 7:30pm Advanced C?": "sold_out",
@@ -72,7 +72,7 @@
       "pending": {}
     },
     "f657e94a7eaf": {
-      "last": "2026-11-20T12:11:12-05:00",
+      "last": "2026-11-20T12:31:28-05:00",
       "pending": {}
     }
   }
