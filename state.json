@@ -12,7 +12,7 @@
     "Beacon 12/18 7:30pm Advanced Intermediate C?": "sold_out",
     "BrandeisFri 11/20 8:15pm Beg & Adv Beg C1": "sold_out",
     "BrandeisFri 11/20 8:15pm Beginner/Small Ct. C?": "open:6+",
-    "BrandeisFri 11/20 8:15pm Intermediate C2": "sold_out",
+    "BrandeisFri 11/20 8:15pm Intermediate C2": "open:1",
     "BrandeisFri 12/04 8:15pm Beg & Adv Beg C1": "open:6+",
     "BrandeisFri 12/04 8:15pm Beginner/Small Ct. C?": "open:6+",
     "BrandeisFri 12/04 8:15pm Intermediate C2": "sold_out",
@@ -43,7 +43,7 @@
     "BrandeisSun 12/13 12pm Intermediate C1": "sold_out",
     "BrandeisSun 12/13 12pm Intermediate C2": "sold_out",
     "BrandeisSun 12/13 4pm Intermediate C1": "sold_out",
-    "BrandeisSun 12/13 4pm Intermediate C2": "open:3",
+    "BrandeisSun 12/13 4pm Intermediate C2": "open:2",
     "BrandeisSun 12/13 9am Beginner C1": "open:6+",
     "BrandeisSun 12/13 9am Beginner C2": "open:6+",
     "BrandeisSun 12/20 12pm Intermediate C1": "sold_out",
@@ -64,7 +64,7 @@
   "purchases": {},
   "throttle": {
     "f657e94a7eaf": {
-      "last": "2026-11-20T11:05:56-05:00",
+      "last": "2026-11-20T11:31:27-05:00",
       "pending": {}
     }
   }
