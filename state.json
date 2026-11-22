@@ -20,7 +20,7 @@
     "BrandeisSun 11/22 12pm Intermediate C1": "sold_out",
     "BrandeisSun 11/22 12pm Intermediate C2": "sold_out",
     "BrandeisSun 11/22 4pm Intermediate C1": "open:2",
-    "BrandeisSun 11/22 4pm Intermediate C2": "sold_out",
+    "BrandeisSun 11/22 4pm Intermediate C2": "open:1",
     "BrandeisSun 11/22 9am Beginner C1": "sold_out",
     "BrandeisSun 11/22 9am Beginner C2": "sold_out",
     "BrandeisSun 11/29 12pm Intermediate C1": "sold_out",
@@ -65,7 +65,7 @@
       "pending": {}
     },
     "f657e94a7eaf": {
-      "last": "2026-11-22T08:00:51-05:00",
+      "last": "2026-11-22T09:40:49-05:00",
       "pending": {}
     }
   }
