@@ -57,20 +57,16 @@
   "purchases": {},
   "throttle": {
     "11dba74e4265": {
-      "last": "2026-11-20T11:41:23-05:00",
-      "pending": {
-        "BrandeisFri 12/04 8:15pm Beg & Adv Beg C1": "Brandeis \u00b7 Fri 12/04 8:15pm Beg & Adv Beg \u00b7 Court 1: 6+ open"
-      }
+      "last": "2026-11-22T08:00:51-05:00",
+      "pending": {}
     },
     "e2135dc723ca": {
       "last": "2026-11-20T11:41:23-05:00",
       "pending": {}
     },
     "f657e94a7eaf": {
-      "last": "2026-11-20T19:25:56-05:00",
-      "pending": {
-        "BrandeisFri 12/04 8:15pm Beg & Adv Beg C1": "Brandeis \u00b7 Fri 12/04 8:15pm Beg & Adv Beg \u00b7 Court 1: 6+ open"
-      }
+      "last": "2026-11-22T08:00:51-05:00",
+      "pending": {}
     }
   }
 }
