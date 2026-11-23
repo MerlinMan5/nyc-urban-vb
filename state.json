@@ -1,5 +1,5 @@
 {
-  "catalog_digest": "{\"Beacon\": {\"dates\": [\"12/04\", \"12/11\", \"12/18\"], \"label\": \"Beacon \\u00b7 Fri\", \"levels\": [\"Advanced\", \"Advanced Intermediate\"]}, \"BrandeisFri\": {\"dates\": [\"12/04\", \"12/11\", \"12/18\"], \"label\": \"Brandeis \\u00b7 Fri\", \"levels\": [\"Beg & Adv Beg\", \"Beginner/Small Ct.\", \"Intermediate\"]}, \"BrandeisSun\": {\"dates\": [\"11/22\", \"11/29\", \"12/06\", \"12/13\", \"12/20\"], \"label\": \"Brandeis \\u00b7 Sun\", \"levels\": [\"Beginner\", \"Intermediate\"]}, \"Clinics\": {\"dates\": [], \"label\": \"Sunday Clinics\", \"levels\": []}, \"LGA\": {\"dates\": [\"12/04\", \"12/11\", \"12/18\"], \"label\": \"LaGuardia \\u00b7 Fri\", \"levels\": [\"Intermediate\"]}, \"W50\": {\"dates\": [], \"label\": \"W50th Street Campus \\u00b7 Fri\", \"levels\": []}}",
+  "catalog_digest": "{\"Beacon\": {\"dates\": [\"12/04\", \"12/11\", \"12/18\"], \"label\": \"Beacon \\u00b7 Fri\", \"levels\": [\"Advanced\", \"Advanced Intermediate\"]}, \"BrandeisFri\": {\"dates\": [\"12/04\", \"12/11\", \"12/18\"], \"label\": \"Brandeis \\u00b7 Fri\", \"levels\": [\"Beg & Adv Beg\", \"Beginner/Small Ct.\", \"Intermediate\"]}, \"BrandeisSun\": {\"dates\": [\"11/29\", \"12/06\", \"12/13\", \"12/20\"], \"label\": \"Brandeis \\u00b7 Sun\", \"levels\": [\"Beginner\", \"Intermediate\"]}, \"Clinics\": {\"dates\": [], \"label\": \"Sunday Clinics\", \"levels\": []}, \"LGA\": {\"dates\": [\"12/04\", \"12/11\", \"12/18\"], \"label\": \"LaGuardia \\u00b7 Fri\", \"levels\": [\"Intermediate\"]}, \"W50\": {\"dates\": [], \"label\": \"W50th Street Campus \\u00b7 Fri\", \"levels\": []}}",
   "key_version": 3,
   "last_seen": {
     "Beacon 12/04 7:30pm Advanced C?": "sold_out",
@@ -17,12 +17,6 @@
     "BrandeisFri 12/18 8:15pm Beg & Adv Beg C1": "open:6+",
     "BrandeisFri 12/18 8:15pm Beginner/Small Ct. C?": "open:6+",
     "BrandeisFri 12/18 8:15pm Intermediate C2": "sold_out",
-    "BrandeisSun 11/22 12pm Intermediate C1": "sold_out",
-    "BrandeisSun 11/22 12pm Intermediate C2": "sold_out",
-    "BrandeisSun 11/22 4pm Intermediate C1": "sold_out",
-    "BrandeisSun 11/22 4pm Intermediate C2": "sold_out",
-    "BrandeisSun 11/22 9am Beginner C1": "sold_out",
-    "BrandeisSun 11/22 9am Beginner C2": "sold_out",
     "BrandeisSun 11/29 12pm Intermediate C1": "sold_out",
     "BrandeisSun 11/29 12pm Intermediate C2": "sold_out",
     "BrandeisSun 11/29 4pm Intermediate C1": "sold_out",
